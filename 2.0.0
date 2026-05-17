@@ -1,0 +1,50 @@
+Collecting Django==3.2.24
+  Downloading Django-3.2.24-py3-none-any.whl (7.9 MB)
+     ---------------------------------------- 7.9/7.9 MB 5.7 MB/s eta 0:00:00
+Collecting django-ninja==1.3.0
+  Downloading django_ninja-1.3.0-py3-none-any.whl (2.4 MB)
+     ---------------------------------------- 2.4/2.4 MB 5.7 MB/s eta 0:00:00
+Collecting pydantic
+  Downloading pydantic-2.13.4-py3-none-any.whl (472 kB)
+     -------------------------------------- 472.3/472.3 kB 2.1 MB/s eta 0:00:00
+Collecting email-validator
+  Downloading email_validator-2.3.0-py3-none-any.whl (35 kB)
+Collecting python-dotenv
+  Downloading python_dotenv-1.2.2-py3-none-any.whl (22 kB)
+Collecting django-cors-headers==3.14.0
+  Downloading django_cors_headers-3.14.0-py3-none-any.whl (13 kB)
+Collecting dj-database-url
+  Downloading dj_database_url-3.1.2-py3-none-any.whl (9.0 kB)
+Collecting asgiref<4,>=3.3.2
+  Downloading asgiref-3.11.1-py3-none-any.whl (24 kB)
+Collecting pytz
+  Downloading pytz-2026.2-py2.py3-none-any.whl (510 kB)
+     -------------------------------------- 510.1/510.1 kB 2.9 MB/s eta 0:00:00
+Collecting sqlparse>=0.2.2
+  Downloading sqlparse-0.5.5-py3-none-any.whl (46 kB)
+     -------------------------------------- 46.1/46.1 kB 386.0 kB/s eta 0:00:00
+Collecting typing-inspection>=0.4.2
+  Downloading typing_inspection-0.4.2-py3-none-any.whl (14 kB)
+Collecting annotated-types>=0.6.0
+  Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Collecting typing-extensions>=4.14.1
+  Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+     -------------------------------------- 44.6/44.6 kB 440.7 kB/s eta 0:00:00
+Collecting pydantic-core==2.46.4
+  Downloading pydantic_core-2.46.4-cp310-cp310-win_amd64.whl (2.1 MB)
+     ---------------------------------------- 2.1/2.1 MB 7.8 MB/s eta 0:00:00
+Collecting dnspython>=2.0.0
+  Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+     -------------------------------------- 331.1/331.1 kB 2.9 MB/s eta 0:00:00
+Collecting idna>=2.0.0
+  Downloading idna-3.15-py3-none-any.whl (72 kB)
+     -------------------------------------- 72.3/72.3 kB 398.1 kB/s eta 0:00:00
+Collecting dj-database-url
+  Downloading dj_database_url-3.1.1-py3-none-any.whl (9.0 kB)
+  Downloading dj_database_url-3.1.0-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-3.0.1-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-3.0.0-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-2.3.0-py3-none-any.whl (7.8 kB)
+  Downloading dj_database_url-2.2.0-py3-none-any.whl (7.8 kB)
+Installing collected packages: pytz, typing-extensions, sqlparse, python-dotenv, idna, dnspython, annotated-types, typing-inspection, pydantic-core, email-validator, asgiref, pydantic, Django, django-ninja, django-cors-headers, dj-database-url
+Successfully installed Django-3.2.24 annotated-types-0.7.0 asgiref-3.11.1 dj-database-url-2.2.0 django-cors-headers-3.14.0 django-ninja-1.3.0 dnspython-2.8.0 email-validator-2.3.0 idna-3.15 pydantic-2.13.4 pydantic-core-2.46.4 python-dotenv-1.2.2 pytz-2026.2 sqlparse-0.5.5 typing-extensions-4.15.0 typing-inspection-0.4.2

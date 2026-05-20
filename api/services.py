@@ -1,9 +1,16 @@
 """API 业务逻辑层."""
 from typing import List, Optional
+from datetime import datetime
 
 from django.core.files.uploadedfile import UploadedFile
+from django.db.models import Count, Avg, Sum, Q
+from django.utils import timezone
 
-from .models import Enrollment, EnrollmentDraft, EnrollmentFile
+from .models import (
+    Enrollment, EnrollmentDraft, EnrollmentFile,
+    Course, Chapter, Courseware, CourseEnrollment, ChapterProgress,
+    Assignment, AssignmentSubmission, TrainingNotification, CourseReview
+)
 
 
 class EnrollmentService:
@@ -292,3 +299,510 @@ class EnrollmentFileService:
             文件列表
         """
         return list(EnrollmentFile.objects.filter(draft_id=draft_id))
+
+
+# ==================== 培训模块服务 ====================
+
+class TrainingStatisticsService:
+    """培训统计服务."""
+
+    @staticmethod
+    def get_user_statistics(user_id: int) -> dict:
+        """获取用户培训统计.
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            统计数据字典
+        """
+        enrollments = CourseEnrollment.objects.filter(user_id=user_id)
+
+        total_courses = enrollments.count()
+        completed_courses = enrollments.filter(status='completed').count()
+        in_progress_courses = enrollments.filter(status='in_progress').count()
+
+        # 计算学习时长
+        completed_enrollments = enrollments.filter(status='completed').select_related('course')
+        total_learning_hours = sum(
+            e.course.duration_hours for e in completed_enrollments if e.course
+        ) or 0.0
+
+        # 作业统计
+        submissions = AssignmentSubmission.objects.filter(user_id=user_id)
+        total_assignments = submissions.count()
+        completed_assignments = submissions.filter(status='graded').count()
+        pending_assignments = submissions.filter(status__in=['submitted', 'grading']).count()
+
+        # 平均分
+        graded_submissions = submissions.filter(status='graded', score__isnull=False)
+        average_score = graded_submissions.aggregate(avg=Avg('score'))['avg']
+
+        return {
+            'total_courses': total_courses,
+            'completed_courses': completed_courses,
+            'in_progress_courses': in_progress_courses,
+            'total_learning_hours': float(total_learning_hours),
+            'total_assignments': total_assignments,
+            'completed_assignments': completed_assignments,
+            'pending_assignments': pending_assignments,
+            'average_score': round(average_score, 1) if average_score else None,
+        }
+
+
+class LearningProgressService:
+    """学习进度服务."""
+
+    @staticmethod
+    def get_user_progress(user_id: int) -> List[dict]:
+        """获取用户学习进度列表.
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            学习进度列表
+        """
+        enrollments = CourseEnrollment.objects.filter(user_id=user_id).select_related('course')
+
+        result = []
+        for enrollment in enrollments:
+            course = enrollment.course
+            total_chapters = course.chapters.count() if course else 0
+            completed_chapters = ChapterProgress.objects.filter(
+                enrollment=enrollment,
+                is_completed=True
+            ).count()
+
+            result.append({
+                'course_id': course.id if course else 0,
+                'course_title': course.title if course else '',
+                'status': enrollment.status,
+                'progress_percent': enrollment.progress_percent,
+                'completed_chapters': completed_chapters,
+                'total_chapters': total_chapters,
+                'enrolled_at': enrollment.enrolled_at,
+                'completed_at': enrollment.completed_at,
+            })
+
+        return result
+
+    @staticmethod
+    def mark_chapter_completed(enrollment_id: int, chapter_id: int) -> Optional[ChapterProgress]:
+        """标记章节完成.
+
+        Args:
+            enrollment_id: 选课ID
+            chapter_id: 章节ID
+
+        Returns:
+            章节进度对象
+        """
+        try:
+            enrollment = CourseEnrollment.objects.get(id=enrollment_id)
+            chapter = Chapter.objects.get(id=chapter_id)
+
+            progress, created = ChapterProgress.objects.update_or_create(
+                enrollment=enrollment,
+                chapter=chapter,
+                defaults={
+                    'is_completed': True,
+                    'completed_at': timezone.now()
+                }
+            )
+
+            # 更新课程整体进度
+            total_chapters = chapter.course.chapters.count()
+            completed_count = ChapterProgress.objects.filter(
+                enrollment=enrollment,
+                is_completed=True
+            ).count()
+
+            enrollment.progress_percent = int((completed_count / total_chapters) * 100) if total_chapters > 0 else 0
+
+            if completed_count >= total_chapters:
+                enrollment.status = 'completed'
+                enrollment.completed_at = timezone.now()
+            else:
+                enrollment.status = 'in_progress'
+
+            enrollment.save()
+            return progress
+        except (CourseEnrollment.DoesNotExist, Chapter.DoesNotExist):
+            return None
+
+
+class CourseService:
+    """培训课程服务."""
+
+    @staticmethod
+    def get_user_courses(user_id: int, page: int = 1, page_size: int = 20) -> dict:
+        """获取用户培训课程列表.
+
+        Args:
+            user_id: 用户ID
+            page: 页码
+            page_size: 每页大小
+
+        Returns:
+            分页结果字典
+        """
+        enrollments = CourseEnrollment.objects.filter(user_id=user_id).select_related('course', 'course__instructor')
+
+        queryset = []
+        for enrollment in enrollments:
+            course = enrollment.course
+            if course:
+                queryset.append({
+                    'id': course.id,
+                    'title': course.title,
+                    'description': course.description,
+                    'cover_image': course.cover_image,
+                    'instructor_name': course.instructor.name if course.instructor else '',
+                    'status': course.status,
+                    'start_date': course.start_date,
+                    'end_date': course.end_date,
+                    'duration_hours': course.duration_hours,
+                    'enrolled_count': course.enrollments.count(),
+                    'enrolled_at': enrollment.enrolled_at,
+                })
+
+        total = len(queryset)
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        return {
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'items': queryset[start:end]
+        }
+
+    @staticmethod
+    def get_course_detail(course_id: int, user_id: int) -> Optional[dict]:
+        """获取课程详情(含课件、章节).
+
+        Args:
+            course_id: 课程ID
+            user_id: 用户ID
+
+        Returns:
+            课程详情字典
+        """
+        try:
+            course = Course.objects.prefetch_related('chapters__coursewares').get(id=course_id)
+            enrollment = CourseEnrollment.objects.get(course=course_id, user=user_id)
+
+            chapters_data = []
+            for chapter in course.chapters.all():
+                # 获取该用户在当前章节的进度
+                chapter_progress = ChapterProgress.objects.filter(
+                    enrollment=enrollment,
+                    chapter=chapter
+                ).first()
+
+                coursewares_data = []
+                for courseware in chapter.coursewares.all():
+                    coursewares_data.append({
+                        'id': courseware.id,
+                        'title': courseware.title,
+                        'type': courseware.type,
+                        'file_url': courseware.file_url,
+                        'file_size': courseware.file_size,
+                        'duration_minutes': courseware.duration_minutes,
+                        'order': courseware.order,
+                        'created_at': courseware.created_at,
+                    })
+
+                chapters_data.append({
+                    'id': chapter.id,
+                    'title': chapter.title,
+                    'description': chapter.description,
+                    'order': chapter.order,
+                    'duration_minutes': chapter.duration_minutes,
+                    'coursewares': coursewares_data,
+                    'created_at': chapter.created_at,
+                    # 'is_completed': chapter_progress.is_completed if chapter_progress else False,
+                })
+
+            return {
+                'id': course.id,
+                'title': course.title,
+                'description': course.description,
+                'cover_image': course.cover_image,
+                'instructor_id': course.instructor.id if course.instructor else None,
+                'instructor_name': course.instructor.name if course.instructor else '',
+                'status': course.status,
+                'start_date': course.start_date,
+                'end_date': course.end_date,
+                'duration_hours': course.duration_hours,
+                'chapters': chapters_data,
+                'created_at': course.created_at,
+            }
+        except (Course.DoesNotExist, CourseEnrollment.DoesNotExist):
+            return None
+
+
+class AssignmentService:
+    """作业服务."""
+
+    @staticmethod
+    def get_pending_assignments(instructor_id: int, page: int = 1, page_size: int = 20) -> dict:
+        """获取待批改作业列表(讲师视角).
+
+        Args:
+            instructor_id: 讲师ID
+            page: 页码
+            page_size: 每页大小
+
+        Returns:
+            分页结果字典
+        """
+        # 获取讲师开设课程的所有待批改作业
+        courses = Course.objects.filter(instructor_id=instructor_id)
+        assignments = Assignment.objects.filter(course__in=courses)
+
+        submissions = AssignmentSubmission.objects.filter(
+            assignment__in=assignments,
+            status__in=['submitted', 'grading']
+        ).select_related('assignment', 'assignment__course', 'user')
+
+        total = submissions.count()
+        items = submissions[(page - 1) * page_size:page * page_size]
+
+        result = []
+        for submission in items:
+            result.append({
+                'id': submission.id,
+                'assignment_id': submission.assignment.id,
+                'assignment_title': submission.assignment.title,
+                'course_id': submission.assignment.course.id,
+                'course_title': submission.assignment.course.title,
+                'user_id': submission.user.id,
+                'user_name': submission.user.name,
+                'submitted_at': submission.submitted_at,
+            })
+
+        return {
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'items': result
+        }
+
+    @staticmethod
+    def get_assignment_detail(submission_id: int) -> Optional[AssignmentSubmission]:
+        """获取作业详情.
+
+        Args:
+            submission_id: 提交ID
+
+        Returns:
+            作业提交对象
+        """
+        try:
+            return AssignmentSubmission.objects.select_related(
+                'assignment', 'assignment__course', 'user'
+            ).get(id=submission_id)
+        except AssignmentSubmission.DoesNotExist:
+            return None
+
+    @staticmethod
+    def grade_assignment(submission_id: int, score: int, feedback: str) -> Optional[AssignmentSubmission]:
+        """批改作业.
+
+        Args:
+            submission_id: 提交ID
+            score: 得分
+            feedback: 批改反馈
+
+        Returns:
+            更新后的提交对象
+        """
+        try:
+            submission = AssignmentSubmission.objects.get(id=submission_id)
+            submission.score = score
+            submission.feedback = feedback
+            submission.status = 'graded'
+            submission.graded_at = timezone.now()
+            submission.save()
+            return submission
+        except AssignmentSubmission.DoesNotExist:
+            return None
+
+    @staticmethod
+    def get_user_submissions(user_id: int) -> List[AssignmentSubmission]:
+        """获取用户作业批改情况.
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            作业提交列表
+        """
+        submissions = AssignmentSubmission.objects.filter(user_id=user_id).select_related(
+            'assignment', 'assignment__course'
+        ).order_by('-submitted_at')
+
+        result = []
+        for s in submissions:
+            result.append({
+                'id': s.id,
+                'assignment_id': s.assignment.id,
+                'assignment_title': s.assignment.title,
+                'content': s.content,
+                'attachment_url': s.attachment_url,
+                'status': s.status,
+                'score': s.score,
+                'feedback': s.feedback,
+                'submitted_at': s.submitted_at,
+                'graded_at': s.graded_at,
+            })
+        return result
+
+    @staticmethod
+    def submit_assignment(assignment_id: int, user_id: int, content: str, attachment_url: str = "") -> AssignmentSubmission:
+        """提交作业.
+
+        Args:
+            assignment_id: 作业ID
+            user_id: 用户ID
+            content: 提交内容
+            attachment_url: 附件URL
+
+        Returns:
+            作业提交对象
+        """
+        # 检查是否已有提交
+        existing = AssignmentSubmission.objects.filter(
+            assignment_id=assignment_id,
+            user_id=user_id
+        ).first()
+
+        if existing:
+            existing.content = content
+            existing.attachment_url = attachment_url
+            existing.status = 'submitted'
+            existing.submitted_at = timezone.now()
+            existing.save()
+            return existing
+
+        return AssignmentSubmission.objects.create(
+            assignment_id=assignment_id,
+            user_id=user_id,
+            content=content,
+            attachment_url=attachment_url,
+            status='submitted'
+        )
+
+    @staticmethod
+    def resubmit_assignment(submission_id: int, content: str, attachment_url: str = "") -> Optional[AssignmentSubmission]:
+        """重新提交作业.
+
+        Args:
+            submission_id: 提交ID
+            content: 提交内容
+            attachment_url: 附件URL
+
+        Returns:
+            更新后的提交对象
+        """
+        try:
+            submission = AssignmentSubmission.objects.get(id=submission_id)
+            # 只有已批改的作业才能重新提交
+            if submission.status == 'graded':
+                submission.content = content
+                submission.attachment_url = attachment_url
+                submission.status = 'submitted'
+                submission.score = None
+                submission.feedback = ""
+                submission.submitted_at = timezone.now()
+                submission.graded_at = None
+                submission.save()
+                return submission
+            return None
+        except AssignmentSubmission.DoesNotExist:
+            return None
+
+
+class NotificationService:
+    """培训通知服务."""
+
+    @staticmethod
+    def get_user_notifications(user_id: int, page: int = 1, page_size: int = 20) -> dict:
+        """获取培训通知列表.
+
+        Args:
+            user_id: 用户ID
+            page: 页码
+            page_size: 每页大小
+
+        Returns:
+            分页结果字典
+        """
+        # 获取用户报名的所有课程的通知
+        enrolled_courses = CourseEnrollment.objects.filter(user_id=user_id).values_list('course_id', flat=True)
+
+        notifications = TrainingNotification.objects.filter(
+            Q(course_id__in=enrolled_courses) | Q(course_id__isnull=True),
+            is_published=True
+        ).select_related('course').order_by('-created_at')
+
+        total = notifications.count()
+        items = notifications[(page - 1) * page_size:page * page_size]
+
+        result = []
+        for n in items:
+            result.append({
+                'id': n.id,
+                'course_id': n.course_id,
+                'course_title': n.course.title if n.course else None,
+                'title': n.title,
+                'content': n.content,
+                'priority': n.priority,
+                'is_published': n.is_published,
+                'published_at': n.published_at,
+                'created_at': n.created_at,
+            })
+
+        return {
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'items': result
+        }
+
+
+class CourseReviewService:
+    """课程评价服务."""
+
+    @staticmethod
+    def create_review(enrollment_id: int, rating: int, content: str) -> Optional[CourseReview]:
+        """提交课程评价.
+
+        Args:
+            enrollment_id: 选课ID
+            rating: 评分(1-5)
+            content: 评价内容
+
+        Returns:
+            评价对象或 None
+        """
+        try:
+            enrollment = CourseEnrollment.objects.get(id=enrollment_id)
+
+            # 检查是否已评价
+            existing = CourseReview.objects.filter(enrollment=enrollment).first()
+            if existing:
+                existing.rating = rating
+                existing.content = content
+                existing.save()
+                return existing
+
+            return CourseReview.objects.create(
+                enrollment=enrollment,
+                rating=rating,
+                content=content
+            )
+        except CourseEnrollment.DoesNotExist:
+            return None

@@ -1,9 +1,9 @@
-"""API 路由定义."""
+"""API 路由定义 - 学员问题管理模块."""
 
 from typing import Optional
 
 from django.http import HttpRequest
-from ninja import Router
+from ninja import Router, File, UploadedFile
 from ninja.errors import HttpError
 
 from api.models import Question, User
@@ -42,6 +42,19 @@ def get_current_user(request: HttpRequest) -> User:
 
 
 # ==================== 问题 CRUD 接口 ====================
+
+@question_router.get(
+    "/categories",
+    response={200: list},
+    summary="获取问题分类列表",
+)
+def get_question_categories(request: HttpRequest) -> list:
+    """获取所有问题分类列表."""
+    return [
+        {"value": value, "label": label}
+        for value, label in Question.CATEGORY_CHOICES
+    ]
+
 
 @question_router.post(
     "",
@@ -262,10 +275,80 @@ def create_reply(
     return 201, reply
 
 
+# ==================== 文件上传接口 ====================
+
+@question_router.post(
+    "/upload",
+    response={200: dict},
+    summary="附件/图片上传",
+)
+def upload_question_file(
+    request: HttpRequest,
+    file: UploadedFile = File(...),
+) -> dict:
+    """上传问题附件或图片.
+    
+    支持图片(JPG/PNG/GIF)和文档(PDF/DOC/DOCX)格式
+    文件大小限制: 5MB
+    """
+    import os
+    import uuid
+    from django.conf import settings
+    
+    # 验证文件类型
+    allowed_types = [
+        "image/jpeg", "image/png", "image/gif",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    
+    if file.content_type not in allowed_types:
+        raise HttpError(400, "不支持的文件类型，仅支持 JPG/PNG/GIF/PDF/DOC/DOCX")
+    
+    # 验证文件大小 (5MB)
+    max_size = 5 * 1024 * 1024
+    if file.size > max_size:
+        raise HttpError(400, "文件大小超过5MB限制")
+    
+    # 生成唯一文件名
+    ext = os.path.splitext(file.name)[1].lower()
+    filename = f"{uuid.uuid4().hex}{ext}"
+    
+    # 确定存储路径 (按日期分目录)
+    from datetime import datetime
+    today = datetime.now()
+    relative_path = f"questions/{today.year}/{today.month:02d}/{filename}"
+    full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    
+    # 保存文件
+    with open(full_path, "wb+") as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    
+    # 返回文件URL
+    file_url = f"{settings.MEDIA_URL}{relative_path}"
+    
+    return {
+        "code": 200,
+        "message": "上传成功",
+        "data": {
+            "name": file.name,
+            "url": file_url,
+            "size": file.size,
+            "type": file.content_type,
+        },
+    }
+
+
 # ==================== 主路由 ====================
 
 # 创建主路由
 router = Router(tags=["API"])
 
-# 注册问题模块路由
+# 挂载问题管理路由
 router.add_router("/questions", question_router)
+

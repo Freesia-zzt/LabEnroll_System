@@ -1,808 +1,196 @@
-"""API 业务逻辑层."""
-from typing import List, Optional
-from datetime import datetime
+"""业务逻辑层."""
 
-from django.core.files.uploadedfile import UploadedFile
-from django.db.models import Count, Avg, Sum, Q
-from django.utils import timezone
+from typing import Optional
 
-from .models import (
-    Enrollment, EnrollmentDraft, EnrollmentFile,
-    Course, Chapter, Courseware, CourseEnrollment, ChapterProgress,
-    Assignment, AssignmentSubmission, TrainingNotification, CourseReview
-)
+from django.db.models import Q, QuerySet
+
+from api.models import Question, QuestionReply, User
 
 
-class EnrollmentService:
-    """报名服务类."""
-
+class QuestionService:
+    """问题服务类."""
+    
     @staticmethod
-    def create_enrollment(user_id: int, data: dict) -> Enrollment:
-        """创建报名.
-
+    def create_question(
+        author: User,
+        title: str,
+        content: str,
+        category: str,
+        attachments: list[str],
+    ) -> Question:
+        """创建新问题.
+        
         Args:
-            user_id: 用户ID
-            data: 报名数据
-
+            author: 提问者
+            title: 问题标题
+            content: 问题内容
+            category: 问题分类
+            attachments: 附件URL列表
+            
         Returns:
-            创建的报名对象
+            创建的问题实例
         """
-        return Enrollment.objects.create(
-            user_id=user_id,
-            course_name=data['course_name'],
-            department=data['department'],
-            position=data['position'],
-            reason=data['reason'],
-        )
-
-    @staticmethod
-    def get_enrollment(enrollment_id: int) -> Optional[Enrollment]:
-        """获取报名详情.
-
-        Args:
-            enrollment_id: 报名ID
-
-        Returns:
-            报名对象或 None
-        """
-        try:
-            return Enrollment.objects.get(id=enrollment_id)
-        except Enrollment.DoesNotExist:
-            return None
-
-    @staticmethod
-    def get_enrollments_by_user(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取用户的报名列表（分页）.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        queryset = Enrollment.objects.filter(user_id=user_id).order_by('-submitted_at')
-        total = queryset.count()
-        items = queryset[(page - 1) * page_size:page * page_size]
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': list(items)
-        }
-
-    @staticmethod
-    def update_enrollment(enrollment_id: int, data: dict) -> Optional[Enrollment]:
-        """更新报名信息.
-
-        Args:
-            enrollment_id: 报名ID
-            data: 更新数据
-
-        Returns:
-            更新后的报名对象或 None
-        """
-        try:
-            enrollment = Enrollment.objects.get(id=enrollment_id)
-            for key, value in data.items():
-                if value is not None:
-                    setattr(enrollment, key, value)
-            enrollment.save()
-            return enrollment
-        except Enrollment.DoesNotExist:
-            return None
-
-    @staticmethod
-    def cancel_enrollment(enrollment_id: int) -> bool:
-        """取消报名.
-
-        Args:
-            enrollment_id: 报名ID
-
-        Returns:
-            是否取消成功
-        """
-        try:
-            enrollment = Enrollment.objects.get(id=enrollment_id)
-            enrollment.status = 'cancelled'
-            enrollment.save()
-            return True
-        except Enrollment.DoesNotExist:
-            return False
-
-
-class EnrollmentDraftService:
-    """报名草稿服务类."""
-
-    @staticmethod
-    def create_draft(user_id: int, data: dict) -> EnrollmentDraft:
-        """创建草稿.
-
-        Args:
-            user_id: 用户ID
-            data: 草稿数据
-
-        Returns:
-            创建的草稿对象
-        """
-        return EnrollmentDraft.objects.create(
-            user_id=user_id,
-            course_name=data.get('course_name', ''),
-            department=data.get('department', ''),
-            position=data.get('position', ''),
-            reason=data.get('reason', ''),
-            draft_data=data.get('draft_data', {}),
-        )
-
-    @staticmethod
-    def get_draft(draft_id: int) -> Optional[EnrollmentDraft]:
-        """获取草稿详情.
-
-        Args:
-            draft_id: 草稿ID
-
-        Returns:
-            草稿对象或 None
-        """
-        try:
-            return EnrollmentDraft.objects.get(id=draft_id)
-        except EnrollmentDraft.DoesNotExist:
-            return None
-
-    @staticmethod
-    def get_drafts_by_user(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取用户的草稿列表（分页）.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        queryset = EnrollmentDraft.objects.filter(user_id=user_id).order_by('-updated_at')
-        total = queryset.count()
-        items = queryset[(page - 1) * page_size:page * page_size]
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': list(items)
-        }
-
-    @staticmethod
-    def update_draft(draft_id: int, data: dict) -> Optional[EnrollmentDraft]:
-        """更新草稿.
-
-        Args:
-            draft_id: 草稿ID
-            data: 更新数据
-
-        Returns:
-            更新后的草稿对象或 None
-        """
-        try:
-            draft = EnrollmentDraft.objects.get(id=draft_id)
-            if 'course_name' in data:
-                draft.course_name = data['course_name']
-            if 'department' in data:
-                draft.department = data['department']
-            if 'position' in data:
-                draft.position = data['position']
-            if 'reason' in data:
-                draft.reason = data['reason']
-            if 'draft_data' in data:
-                draft.draft_data = data['draft_data']
-            draft.save()
-            return draft
-        except EnrollmentDraft.DoesNotExist:
-            return None
-
-    @staticmethod
-    def delete_draft(draft_id: int) -> bool:
-        """删除草稿.
-
-        Args:
-            draft_id: 草稿ID
-
-        Returns:
-            是否删除成功
-        """
-        try:
-            draft = EnrollmentDraft.objects.get(id=draft_id)
-            draft.delete()
-            return True
-        except EnrollmentDraft.DoesNotExist:
-            return False
-
-    @staticmethod
-    def clear_all_drafts(user_id: int) -> int:
-        """清空所有草稿.
-
-        Args:
-            user_id: 用户ID
-
-        Returns:
-            删除的草稿数量
-        """
-        deleted_count, _ = EnrollmentDraft.objects.filter(user_id=user_id).delete()
-        return deleted_count
-
-
-class EnrollmentFileService:
-    """报名文件服务类."""
-
-    @staticmethod
-    def upload_file(
-        file: UploadedFile,
-        enrollment_id: Optional[int] = None,
-        draft_id: Optional[int] = None
-    ) -> EnrollmentFile:
-        """上传文件.
-
-        Args:
-            file: 上传的文件
-            enrollment_id: 报名ID（可选）
-            draft_id: 草稿ID（可选）
-
-        Returns:
-            文件对象
-        """
-        return EnrollmentFile.objects.create(
-            enrollment_id=enrollment_id,
-            draft_id=draft_id,
-            file=file,
-            file_name=file.name,
-            file_size=file.size,
-        )
-
-    @staticmethod
-    def delete_file(file_id: int) -> bool:
-        """删除文件.
-
-        Args:
-            file_id: 文件ID
-
-        Returns:
-            是否删除成功
-        """
-        try:
-            file_obj = EnrollmentFile.objects.get(id=file_id)
-            file_obj.file.delete()  # 删除物理文件
-            file_obj.delete()  # 删除数据库记录
-            return True
-        except EnrollmentFile.DoesNotExist:
-            return False
-
-    @staticmethod
-    def get_files_by_enrollment(enrollment_id: int) -> List[EnrollmentFile]:
-        """获取报名相关文件.
-
-        Args:
-            enrollment_id: 报名ID
-
-        Returns:
-            文件列表
-        """
-        return list(EnrollmentFile.objects.filter(enrollment_id=enrollment_id))
-
-    @staticmethod
-    def get_files_by_draft(draft_id: int) -> List[EnrollmentFile]:
-        """获取草稿相关文件.
-
-        Args:
-            draft_id: 草稿ID
-
-        Returns:
-            文件列表
-        """
-        return list(EnrollmentFile.objects.filter(draft_id=draft_id))
-
-
-# ==================== 培训模块服务 ====================
-
-class TrainingStatisticsService:
-    """培训统计服务."""
-
-    @staticmethod
-    def get_user_statistics(user_id: int) -> dict:
-        """获取用户培训统计.
-
-        Args:
-            user_id: 用户ID
-
-        Returns:
-            统计数据字典
-        """
-        enrollments = CourseEnrollment.objects.filter(user_id=user_id)
-
-        total_courses = enrollments.count()
-        completed_courses = enrollments.filter(status='completed').count()
-        in_progress_courses = enrollments.filter(status='in_progress').count()
-
-        # 计算学习时长
-        completed_enrollments = enrollments.filter(status='completed').select_related('course')
-        total_learning_hours = sum(
-            e.course.duration_hours for e in completed_enrollments if e.course
-        ) or 0.0
-
-        # 作业统计
-        submissions = AssignmentSubmission.objects.filter(user_id=user_id)
-        total_assignments = submissions.count()
-        completed_assignments = submissions.filter(status='graded').count()
-        pending_assignments = submissions.filter(status__in=['submitted', 'grading']).count()
-
-        # 平均分
-        graded_submissions = submissions.filter(status='graded', score__isnull=False)
-        average_score = graded_submissions.aggregate(avg=Avg('score'))['avg']
-
-        return {
-            'total_courses': total_courses,
-            'completed_courses': completed_courses,
-            'in_progress_courses': in_progress_courses,
-            'total_learning_hours': float(total_learning_hours),
-            'total_assignments': total_assignments,
-            'completed_assignments': completed_assignments,
-            'pending_assignments': pending_assignments,
-            'average_score': round(average_score, 1) if average_score else None,
-        }
-
-
-class LearningProgressService:
-    """学习进度服务."""
-
-    @staticmethod
-    def get_user_progress(user_id: int) -> List[dict]:
-        """获取用户学习进度列表.
-
-        Args:
-            user_id: 用户ID
-
-        Returns:
-            学习进度列表
-        """
-        enrollments = CourseEnrollment.objects.filter(user_id=user_id).select_related('course')
-
-        result = []
-        for enrollment in enrollments:
-            course = enrollment.course
-            total_chapters = course.chapters.count() if course else 0
-            completed_chapters = ChapterProgress.objects.filter(
-                enrollment=enrollment,
-                is_completed=True
-            ).count()
-
-            result.append({
-                'course_id': course.id if course else 0,
-                'course_title': course.title if course else '',
-                'status': enrollment.status,
-                'progress_percent': enrollment.progress_percent,
-                'completed_chapters': completed_chapters,
-                'total_chapters': total_chapters,
-                'enrolled_at': enrollment.enrolled_at,
-                'completed_at': enrollment.completed_at,
-            })
-
-        return result
-
-    @staticmethod
-    def mark_chapter_completed(enrollment_id: int, chapter_id: int) -> Optional[ChapterProgress]:
-        """标记章节完成.
-
-        Args:
-            enrollment_id: 选课ID
-            chapter_id: 章节ID
-
-        Returns:
-            章节进度对象
-        """
-        try:
-            enrollment = CourseEnrollment.objects.get(id=enrollment_id)
-            chapter = Chapter.objects.get(id=chapter_id)
-
-            progress, created = ChapterProgress.objects.update_or_create(
-                enrollment=enrollment,
-                chapter=chapter,
-                defaults={
-                    'is_completed': True,
-                    'completed_at': timezone.now()
-                }
-            )
-
-            # 更新课程整体进度
-            total_chapters = chapter.course.chapters.count()
-            completed_count = ChapterProgress.objects.filter(
-                enrollment=enrollment,
-                is_completed=True
-            ).count()
-
-            enrollment.progress_percent = int((completed_count / total_chapters) * 100) if total_chapters > 0 else 0
-
-            if completed_count >= total_chapters:
-                enrollment.status = 'completed'
-                enrollment.completed_at = timezone.now()
-            else:
-                enrollment.status = 'in_progress'
-
-            enrollment.save()
-            return progress
-        except (CourseEnrollment.DoesNotExist, Chapter.DoesNotExist):
-            return None
-
-
-class CourseService:
-    """培训课程服务."""
-
-    @staticmethod
-    def get_user_courses(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取用户培训课程列表.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        enrollments = CourseEnrollment.objects.filter(user_id=user_id).select_related('course', 'course__instructor')
-
-        queryset = []
-        for enrollment in enrollments:
-            course = enrollment.course
-            if course:
-                queryset.append({
-                    'id': course.id,
-                    'title': course.title,
-                    'description': course.description,
-                    'cover_image': course.cover_image,
-                    'instructor_name': course.instructor.name if course.instructor else '',
-                    'status': course.status,
-                    'start_date': course.start_date,
-                    'end_date': course.end_date,
-                    'duration_hours': course.duration_hours,
-                    'enrolled_count': course.enrollments.count(),
-                    'enrolled_at': enrollment.enrolled_at,
-                })
-
-        total = len(queryset)
-        start = (page - 1) * page_size
-        end = start + page_size
-
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': queryset[start:end]
-        }
-
-    @staticmethod
-    def get_course_detail(course_id: int, user_id: int) -> Optional[dict]:
-        """获取课程详情(含课件、章节).
-
-        Args:
-            course_id: 课程ID
-            user_id: 用户ID
-
-        Returns:
-            课程详情字典
-        """
-        try:
-            course = Course.objects.prefetch_related('chapters__coursewares').get(id=course_id)
-            enrollment = CourseEnrollment.objects.get(course=course_id, user=user_id)
-
-            chapters_data = []
-            for chapter in course.chapters.all():
-                # 获取该用户在当前章节的进度
-                chapter_progress = ChapterProgress.objects.filter(
-                    enrollment=enrollment,
-                    chapter=chapter
-                ).first()
-
-                coursewares_data = []
-                for courseware in chapter.coursewares.all():
-                    coursewares_data.append({
-                        'id': courseware.id,
-                        'title': courseware.title,
-                        'type': courseware.type,
-                        'file_url': courseware.file_url,
-                        'file_size': courseware.file_size,
-                        'duration_minutes': courseware.duration_minutes,
-                        'order': courseware.order,
-                        'created_at': courseware.created_at,
-                    })
-
-                chapters_data.append({
-                    'id': chapter.id,
-                    'title': chapter.title,
-                    'description': chapter.description,
-                    'order': chapter.order,
-                    'duration_minutes': chapter.duration_minutes,
-                    'coursewares': coursewares_data,
-                    'created_at': chapter.created_at,
-                    # 'is_completed': chapter_progress.is_completed if chapter_progress else False,
-                })
-
-            return {
-                'id': course.id,
-                'title': course.title,
-                'description': course.description,
-                'cover_image': course.cover_image,
-                'instructor_id': course.instructor.id if course.instructor else None,
-                'instructor_name': course.instructor.name if course.instructor else '',
-                'status': course.status,
-                'start_date': course.start_date,
-                'end_date': course.end_date,
-                'duration_hours': course.duration_hours,
-                'chapters': chapters_data,
-                'created_at': course.created_at,
-            }
-        except (Course.DoesNotExist, CourseEnrollment.DoesNotExist):
-            return None
-
-
-class AssignmentService:
-    """作业服务."""
-
-    @staticmethod
-    def get_pending_assignments(instructor_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取待批改作业列表(讲师视角).
-
-        Args:
-            instructor_id: 讲师ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        # 获取讲师开设课程的所有待批改作业
-        courses = Course.objects.filter(instructor_id=instructor_id)
-        assignments = Assignment.objects.filter(course__in=courses)
-
-        submissions = AssignmentSubmission.objects.filter(
-            assignment__in=assignments,
-            status__in=['submitted', 'grading']
-        ).select_related('assignment', 'assignment__course', 'user')
-
-        total = submissions.count()
-        items = submissions[(page - 1) * page_size:page * page_size]
-
-        result = []
-        for submission in items:
-            result.append({
-                'id': submission.id,
-                'assignment_id': submission.assignment.id,
-                'assignment_title': submission.assignment.title,
-                'course_id': submission.assignment.course.id,
-                'course_title': submission.assignment.course.title,
-                'user_id': submission.user.id,
-                'user_name': submission.user.name,
-                'submitted_at': submission.submitted_at,
-            })
-
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': result
-        }
-
-    @staticmethod
-    def get_assignment_detail(submission_id: int) -> Optional[AssignmentSubmission]:
-        """获取作业详情.
-
-        Args:
-            submission_id: 提交ID
-
-        Returns:
-            作业提交对象
-        """
-        try:
-            return AssignmentSubmission.objects.select_related(
-                'assignment', 'assignment__course', 'user'
-            ).get(id=submission_id)
-        except AssignmentSubmission.DoesNotExist:
-            return None
-
-    @staticmethod
-    def grade_assignment(submission_id: int, score: int, feedback: str) -> Optional[AssignmentSubmission]:
-        """批改作业.
-
-        Args:
-            submission_id: 提交ID
-            score: 得分
-            feedback: 批改反馈
-
-        Returns:
-            更新后的提交对象
-        """
-        try:
-            submission = AssignmentSubmission.objects.get(id=submission_id)
-            submission.score = score
-            submission.feedback = feedback
-            submission.status = 'graded'
-            submission.graded_at = timezone.now()
-            submission.save()
-            return submission
-        except AssignmentSubmission.DoesNotExist:
-            return None
-
-    @staticmethod
-    def get_user_submissions(user_id: int) -> List[AssignmentSubmission]:
-        """获取用户作业批改情况.
-
-        Args:
-            user_id: 用户ID
-
-        Returns:
-            作业提交列表
-        """
-        submissions = AssignmentSubmission.objects.filter(user_id=user_id).select_related(
-            'assignment', 'assignment__course'
-        ).order_by('-submitted_at')
-
-        result = []
-        for s in submissions:
-            result.append({
-                'id': s.id,
-                'assignment_id': s.assignment.id,
-                'assignment_title': s.assignment.title,
-                'content': s.content,
-                'attachment_url': s.attachment_url,
-                'status': s.status,
-                'score': s.score,
-                'feedback': s.feedback,
-                'submitted_at': s.submitted_at,
-                'graded_at': s.graded_at,
-            })
-        return result
-
-    @staticmethod
-    def submit_assignment(assignment_id: int, user_id: int, content: str, attachment_url: str = "") -> AssignmentSubmission:
-        """提交作业.
-
-        Args:
-            assignment_id: 作业ID
-            user_id: 用户ID
-            content: 提交内容
-            attachment_url: 附件URL
-
-        Returns:
-            作业提交对象
-        """
-        # 检查是否已有提交
-        existing = AssignmentSubmission.objects.filter(
-            assignment_id=assignment_id,
-            user_id=user_id
-        ).first()
-
-        if existing:
-            existing.content = content
-            existing.attachment_url = attachment_url
-            existing.status = 'submitted'
-            existing.submitted_at = timezone.now()
-            existing.save()
-            return existing
-
-        return AssignmentSubmission.objects.create(
-            assignment_id=assignment_id,
-            user_id=user_id,
+        return Question.objects.create(
+            author=author,
+            title=title,
             content=content,
-            attachment_url=attachment_url,
-            status='submitted'
+            category=category,
+            attachments=attachments,
         )
-
+    
     @staticmethod
-    def resubmit_assignment(submission_id: int, content: str, attachment_url: str = "") -> Optional[AssignmentSubmission]:
-        """重新提交作业.
-
+    def get_question_list(
+        user: Optional[User] = None,
+        category: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 10,
+    ) -> tuple[QuerySet[Question], int]:
+        """获取问题列表.
+        
         Args:
-            submission_id: 提交ID
-            content: 提交内容
-            attachment_url: 附件URL
-
+            user: 按用户筛选（None表示不过滤）
+            category: 按分类筛选
+            status: 按状态筛选
+            search: 搜索关键词（搜索标题和内容）
+            page: 当前页码
+            per_page: 每页数量
+            
         Returns:
-            更新后的提交对象
+            (问题查询集, 总数量)
         """
-        try:
-            submission = AssignmentSubmission.objects.get(id=submission_id)
-            # 只有已批改的作业才能重新提交
-            if submission.status == 'graded':
-                submission.content = content
-                submission.attachment_url = attachment_url
-                submission.status = 'submitted'
-                submission.score = None
-                submission.feedback = ""
-                submission.submitted_at = timezone.now()
-                submission.graded_at = None
-                submission.save()
-                return submission
-            return None
-        except AssignmentSubmission.DoesNotExist:
-            return None
-
-
-class NotificationService:
-    """培训通知服务."""
-
-    @staticmethod
-    def get_user_notifications(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取培训通知列表.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        # 获取用户报名的所有课程的通知
-        enrolled_courses = CourseEnrollment.objects.filter(user_id=user_id).values_list('course_id', flat=True)
-
-        notifications = TrainingNotification.objects.filter(
-            Q(course_id__in=enrolled_courses) | Q(course_id__isnull=True),
-            is_published=True
-        ).select_related('course').order_by('-created_at')
-
-        total = notifications.count()
-        items = notifications[(page - 1) * page_size:page * page_size]
-
-        result = []
-        for n in items:
-            result.append({
-                'id': n.id,
-                'course_id': n.course_id,
-                'course_title': n.course.title if n.course else None,
-                'title': n.title,
-                'content': n.content,
-                'priority': n.priority,
-                'is_published': n.is_published,
-                'published_at': n.published_at,
-                'created_at': n.created_at,
-            })
-
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': result
-        }
-
-
-class CourseReviewService:
-    """课程评价服务."""
-
-    @staticmethod
-    def create_review(enrollment_id: int, rating: int, content: str) -> Optional[CourseReview]:
-        """提交课程评价.
-
-        Args:
-            enrollment_id: 选课ID
-            rating: 评分(1-5)
-            content: 评价内容
-
-        Returns:
-            评价对象或 None
-        """
-        try:
-            enrollment = CourseEnrollment.objects.get(id=enrollment_id)
-
-            # 检查是否已评价
-            existing = CourseReview.objects.filter(enrollment=enrollment).first()
-            if existing:
-                existing.rating = rating
-                existing.content = content
-                existing.save()
-                return existing
-
-            return CourseReview.objects.create(
-                enrollment=enrollment,
-                rating=rating,
-                content=content
+        queryset = Question.objects.all()
+        
+        # 按用户筛选
+        if user:
+            queryset = queryset.filter(author=user)
+        
+        # 按分类筛选
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        # 按状态筛选
+        if status and status != "all":
+            queryset = queryset.filter(status=status)
+        
+        # 搜索关键词
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(content__icontains=search)
             )
-        except CourseEnrollment.DoesNotExist:
+        
+        total = queryset.count()
+        
+        # 分页
+        start = (page - 1) * per_page
+        end = start + per_page
+        queryset = queryset[start:end]
+        
+        return queryset, total
+    
+    @staticmethod
+    def get_question_detail(question_id: int) -> Optional[Question]:
+        """获取问题详情.
+        
+        Args:
+            question_id: 问题ID
+            
+        Returns:
+            问题实例，不存在则返回None
+        """
+        try:
+            return Question.objects.prefetch_related("replies", "replies__author").get(
+                id=question_id
+            )
+        except Question.DoesNotExist:
             return None
+    
+    @staticmethod
+    def update_question(
+        question: Question,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        category: Optional[str] = None,
+        attachments: Optional[list[str]] = None,
+    ) -> Question:
+        """更新问题.
+        
+        Args:
+            question: 要更新的问题实例
+            title: 新标题（可选）
+            content: 新内容（可选）
+            category: 新分类（可选）
+            attachments: 新附件列表（可选）
+            
+        Returns:
+            更新后的问题实例
+        """
+        if title is not None:
+            question.title = title
+        if content is not None:
+            question.content = content
+        if category is not None:
+            question.category = category
+        if attachments is not None:
+            question.attachments = attachments
+        
+        question.save()
+        return question
+    
+    @staticmethod
+    def update_question_status(question: Question, status: str) -> Question:
+        """更新问题状态.
+        
+        Args:
+            question: 要更新的问题实例
+            status: 新状态
+            
+        Returns:
+            更新后的问题实例
+        """
+        question.status = status
+        question.save()
+        return question
+    
+    @staticmethod
+    def delete_question(question: Question) -> None:
+        """删除问题.
+        
+        Args:
+            question: 要删除的问题实例
+        """
+        question.delete()
+
+
+class QuestionReplyService:
+    """问题回复服务类."""
+    
+    @staticmethod
+    def create_reply(
+        question: Question,
+        author: User,
+        content: str,
+    ) -> QuestionReply:
+        """创建问题回复.
+        
+        Args:
+            question: 所属问题
+            author: 回复者
+            content: 回复内容
+            
+        Returns:
+            创建的回复实例
+        """
+        reply = QuestionReply.objects.create(
+            question=question,
+            author=author,
+            content=content,
+        )
+        
+        # 更新问题状态为已回复（如果之前是未回复）
+        if question.status == Question.STATUS_PENDING:
+            question.status = Question.STATUS_REPLIED
+            question.save()
+        
+        return reply

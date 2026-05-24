@@ -1,445 +1,354 @@
-"""API 路由定义."""
-from typing import Optional, List
+"""API 路由定义 - 学员问题管理模块."""
 
+from typing import Optional
+
+from django.http import HttpRequest
 from ninja import Router, File, UploadedFile
 from ninja.errors import HttpError
 
-from .schemas import (
-    EnrollmentSchema,
-    EnrollmentCreateSchema,
-    EnrollmentStatusSchema,
-    EnrollmentDraftSchema,
-    EnrollmentDraftCreateSchema,
-    EnrollmentFileSchema,
-    PaginatedEnrollmentList,
-    PaginatedDraftList,
+from api.models import Question, User
+from api.schemas import (
     MessageSchema,
-    # 培训模块 Schema
-    TrainingStatisticsSchema,
-    LearningProgressSchema,
-    PaginatedCourseList,
-    CourseDetailSchema,
-    ChapterProgressSchema,
-    AssignmentSubmissionSchema,
-    AssignmentSubmissionCreateSchema,
-    AssignmentGradingSchema,
-    AssignmentReviewSchema,
-    PaginatedPendingAssignmentList,
-    PaginatedNotificationList,
-    CourseReviewSchema,
-    CourseReviewCreateSchema,
+    PaginationSchema,
+    QuestionBriefSchema,
+    QuestionCreateSchema,
+    QuestionDetailSchema,
+    QuestionFilterSchema,
+    QuestionListSchema,
+    QuestionReplyCreateSchema,
+    QuestionReplySchema,
+    QuestionStatusUpdateSchema,
+    QuestionUpdateSchema,
 )
-from .services import (
-    EnrollmentService,
-    EnrollmentDraftService,
-    EnrollmentFileService,
-    TrainingStatisticsService,
-    LearningProgressService,
-    CourseService,
-    AssignmentService,
-    NotificationService,
-    CourseReviewService,
+from api.services import QuestionReplyService, QuestionService
+
+# 创建问题模块路由
+question_router = Router(tags=["问题管理"])
+
+
+# ==================== 认证相关（简化版）====================
+
+def get_current_user(request: HttpRequest) -> User:
+    """获取当前登录用户（简化实现）.
+    
+    实际项目中应该从 JWT Token 或 Session 中解析用户
+    """
+    # 这里简化处理，实际应该从请求头获取 token 并解析
+    # 暂时返回第一个用户作为示例
+    user = User.objects.first()
+    if not user:
+        raise HttpError(401, "未登录")
+    return user
+
+
+# ==================== 问题 CRUD 接口 ====================
+
+@question_router.get(
+    "/categories",
+    response={200: list},
+    summary="获取问题分类列表",
 )
-from .models import CourseEnrollment
+def get_question_categories(request: HttpRequest) -> list:
+    """获取所有问题分类列表."""
+    return [
+        {"value": value, "label": label}
+        for value, label in Question.CATEGORY_CHOICES
+    ]
 
-router = Router(tags=["API"])
-enrollment_router = Router(tags=["报名相关"])
-training_router = Router(tags=["培训模块"])
 
-# ==================== 报名相关 API ====================
-
-@enrollment_router.post("/enrollments", response=EnrollmentSchema)
-def submit_enrollment(request, data: EnrollmentCreateSchema):
-    """提交报名表单.
-
-    POST /api/v1/enrollments
+@question_router.post(
+    "",
+    response={201: QuestionBriefSchema},
+    summary="新增问题",
+)
+def create_question(
+    request: HttpRequest,
+    data: QuestionCreateSchema,
+) -> QuestionBriefSchema:
+    """创建新问题.
+    
+    需要登录权限
     """
-    # 这里需要从请求中获取当前用户ID，实际项目中应该通过认证获取
-    # 为了演示，假设用户ID为1
-    user_id = 1
-    enrollment = EnrollmentService.create_enrollment(user_id, data.dict())
-    return enrollment
+    user = get_current_user(request)
+    
+    # 验证分类是否有效
+    valid_categories = [c[0] for c in Question.CATEGORY_CHOICES]
+    if data.category not in valid_categories:
+        raise HttpError(400, f"无效的分类，可选: {valid_categories}")
+    
+    question = QuestionService.create_question(
+        author=user,
+        title=data.title,
+        content=data.content,
+        category=data.category,
+        attachments=data.attachments,
+    )
+    
+    return 201, question
 
-@enrollment_router.get("/enrollments", response=PaginatedEnrollmentList)
-def get_enrollment_list(
-    request,
-    page: int = 1,
-    page_size: int = 20,
-):
-    """查看报名状态列表（分页）.
 
-    GET /api/v1/enrollments?page=1&page_size=20
+@question_router.get(
+    "",
+    response={200: QuestionListSchema},
+    summary="获取问题列表",
+)
+def list_questions(
+    request: HttpRequest,
+    filters: QuestionFilterSchema = QuestionFilterSchema(),
+) -> QuestionListSchema:
+    """获取问题列表.
+    
+    支持分页、分类筛选、状态筛选、关键词搜索
     """
-    user_id = 1  # 实际项目中从认证获取
-    result = EnrollmentService.get_enrollments_by_user(user_id, page, page_size)
-    return result
+    user = get_current_user(request)
+    
+    # 验证状态参数
+    if filters.status and filters.status not in ["all", "pending", "replied", "resolved"]:
+        raise HttpError(400, "无效的状态参数")
+    
+    questions, total = QuestionService.get_question_list(
+        user=user,
+        category=filters.category,
+        status=filters.status,
+        search=filters.search,
+        page=filters.page,
+        per_page=filters.per_page,
+    )
+    
+    # 计算分页信息
+    last_page = (total + filters.per_page - 1) // filters.per_page
+    
+    return {
+        "data": list(questions),
+        "pagination": {
+            "total": total,
+            "current_page": filters.page,
+            "per_page": filters.per_page,
+            "last_page": max(1, last_page),
+        },
+    }
 
-@enrollment_router.get("/enrollments/{enrollment_id}", response=EnrollmentSchema)
-def get_enrollment(request, enrollment_id: int):
-    """查看单个报名详情.
 
-    GET /api/v1/enrollments/{enrollment_id}
+@question_router.get(
+    "/{question_id}",
+    response={200: QuestionDetailSchema},
+    summary="获取问题详情",
+)
+def get_question(
+    request: HttpRequest,
+    question_id: int,
+) -> QuestionDetailSchema:
+    """获取单个问题详情，包含回复列表."""
+    question = QuestionService.get_question_detail(question_id)
+    
+    if not question:
+        raise HttpError(404, "问题不存在")
+    
+    return question
+
+
+@question_router.put(
+    "/{question_id}",
+    response={200: QuestionBriefSchema},
+    summary="修改问题",
+)
+def update_question(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionUpdateSchema,
+) -> QuestionBriefSchema:
+    """修改问题内容.
+    
+    仅问题发布者可修改
     """
-    enrollment = EnrollmentService.get_enrollment(enrollment_id)
-    if not enrollment:
-        raise HttpError(404, "报名记录不存在")
-    return enrollment
+    user = get_current_user(request)
+    question = QuestionService.get_question_detail(question_id)
+    
+    if not question:
+        raise HttpError(404, "问题不存在")
+    
+    # 检查权限
+    if question.author_id != user.id:
+        raise HttpError(403, "无权修改此问题")
+    
+    # 已解决的问题不能修改
+    if question.status == Question.STATUS_RESOLVED:
+        raise HttpError(400, "已解决的问题不能修改")
+    
+    updated = QuestionService.update_question(
+        question=question,
+        title=data.title,
+        content=data.content,
+        category=data.category,
+        attachments=data.attachments,
+    )
+    
+    return updated
 
-@enrollment_router.put("/enrollments/{enrollment_id}/cancel", response=MessageSchema)
-def cancel_enrollment(request, enrollment_id: int):
-    """取消报名.
 
-    PUT /api/v1/enrollments/{enrollment_id}/cancel
+@question_router.delete(
+    "/{question_id}",
+    response={200: MessageSchema},
+    summary="删除问题",
+)
+def delete_question(
+    request: HttpRequest,
+    question_id: int,
+) -> MessageSchema:
+    """删除问题.
+    
+    仅问题发布者可删除
     """
-    success = EnrollmentService.cancel_enrollment(enrollment_id)
-    if not success:
-        raise HttpError(404, "报名记录不存在")
-    return {"message": "报名已取消"}
+    user = get_current_user(request)
+    question = QuestionService.get_question_detail(question_id)
+    
+    if not question:
+        raise HttpError(404, "问题不存在")
+    
+    # 检查权限
+    if question.author_id != user.id:
+        raise HttpError(403, "无权删除此问题")
+    
+    QuestionService.delete_question(question)
+    
+    return {"message": "删除成功"}
 
-# ==================== 草稿相关 API ====================
 
-@enrollment_router.post("/drafts", response=EnrollmentDraftSchema)
-def save_draft(request, data: EnrollmentDraftCreateSchema):
-    """保存表单草稿.
-
-    POST /api/v1/drafts
+@question_router.put(
+    "/{question_id}/status",
+    response={200: QuestionBriefSchema},
+    summary="更新问题状态",
+)
+def update_question_status(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionStatusUpdateSchema,
+) -> QuestionBriefSchema:
+    """更新问题状态（标记已解决等）.
+    
+    仅问题发布者可操作
     """
-    user_id = 1  # 实际项目中从认证获取
-    draft = EnrollmentDraftService.create_draft(user_id, data.dict())
-    return draft
+    user = get_current_user(request)
+    question = QuestionService.get_question_detail(question_id)
+    
+    if not question:
+        raise HttpError(404, "问题不存在")
+    
+    # 检查权限
+    if question.author_id != user.id:
+        raise HttpError(403, "无权操作此问题")
+    
+    # 验证状态值
+    valid_statuses = [s[0] for s in Question.STATUS_CHOICES]
+    if data.status not in valid_statuses:
+        raise HttpError(400, f"无效的状态，可选: {valid_statuses}")
+    
+    updated = QuestionService.update_question_status(question, data.status)
+    return updated
 
-@enrollment_router.get("/drafts", response=PaginatedDraftList)
-def get_draft_list(
-    request,
-    page: int = 1,
-    page_size: int = 20,
-):
-    """获取草稿列表（分页）.
 
-    GET /api/v1/drafts?page=1&page_size=20
-    """
-    user_id = 1  # 实际项目中从认证获取
-    result = EnrollmentDraftService.get_drafts_by_user(user_id, page, page_size)
-    return result
+# ==================== 问题回复接口 ====================
 
-@enrollment_router.get("/drafts/{draft_id}", response=EnrollmentDraftSchema)
-def get_draft(request, draft_id: int):
-    """获取单个草稿详情.
+@question_router.post(
+    "/{question_id}/replies",
+    response={201: QuestionReplySchema},
+    summary="回复问题",
+)
+def create_reply(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionReplyCreateSchema,
+) -> QuestionReplySchema:
+    """对问题发表回复."""
+    user = get_current_user(request)
+    question = QuestionService.get_question_detail(question_id)
+    
+    if not question:
+        raise HttpError(404, "问题不存在")
+    
+    reply = QuestionReplyService.create_reply(
+        question=question,
+        author=user,
+        content=data.content,
+    )
+    
+    return 201, reply
 
-    GET /api/v1/drafts/{draft_id}
-    """
-    draft = EnrollmentDraftService.get_draft(draft_id)
-    if not draft:
-        raise HttpError(404, "草稿不存在")
-    return draft
 
-@enrollment_router.put("/drafts/{draft_id}", response=EnrollmentDraftSchema)
-def update_draft(request, draft_id: int, data: EnrollmentDraftCreateSchema):
-    """更新草稿（加载并修改草稿）.
+# ==================== 文件上传接口 ====================
 
-    PUT /api/v1/drafts/{draft_id}
-    """
-    draft = EnrollmentDraftService.update_draft(draft_id, data.dict())
-    if not draft:
-        raise HttpError(404, "草稿不存在")
-    return draft
-
-@enrollment_router.delete("/drafts/{draft_id}", response=MessageSchema)
-def delete_draft(request, draft_id: int):
-    """删除草稿.
-
-    DELETE /api/v1/drafts/{draft_id}
-    """
-    success = EnrollmentDraftService.delete_draft(draft_id)
-    if not success:
-        raise HttpError(404, "草稿不存在")
-    return {"message": "草稿已删除"}
-
-@enrollment_router.delete("/drafts", response=MessageSchema)
-def clear_all_drafts(request):
-    """清空所有草稿.
-
-    DELETE /api/v1/drafts
-    """
-    user_id = 1  # 实际项目中从认证获取
-    deleted_count = EnrollmentDraftService.clear_all_drafts(user_id)
-    return {"message": f"已删除 {deleted_count} 个草稿"}
-
-# ==================== 文件相关 API ====================
-
-@enrollment_router.post("/files", response=EnrollmentFileSchema)
-def upload_file(
-    request,
+@question_router.post(
+    "/upload",
+    response={200: dict},
+    summary="附件/图片上传",
+)
+def upload_question_file(
+    request: HttpRequest,
     file: UploadedFile = File(...),
-    enrollment_id: Optional[int] = None,
-    draft_id: Optional[int] = None,
-):
-    """文件上传.
-
-    POST /api/v1/files?enrollment_id=&draft_id=
+) -> dict:
+    """上传问题附件或图片.
+    
+    支持图片(JPG/PNG/GIF)和文档(PDF/DOC/DOCX)格式
+    文件大小限制: 5MB
     """
-    if not enrollment_id and not draft_id:
-        raise HttpError(400, "必须指定 enrollment_id 或 draft_id")
-    file_obj = EnrollmentFileService.upload_file(file, enrollment_id, draft_id)
-    return file_obj
-
-@enrollment_router.delete("/files/{file_id}", response=MessageSchema)
-def delete_file(request, file_id: int):
-    """删除文件.
-
-    DELETE /api/v1/files/{file_id}
-    """
-    success = EnrollmentFileService.delete_file(file_id)
-    if not success:
-        raise HttpError(404, "文件不存在")
-    return {"message": "文件已删除"}
-
-
-# ==================== 培训模块 API ====================
-
-@training_router.get("/statistics", response=TrainingStatisticsSchema)
-def get_training_statistics(request):
-    """查看培训统计.
-
-    GET /api/v1/training/statistics
-    """
-    user_id = 1  # 实际项目中从认证获取
-    statistics = TrainingStatisticsService.get_user_statistics(user_id)
-    return statistics
-
-
-@training_router.get("/progress", response=List[LearningProgressSchema])
-def get_learning_progress(request):
-    """查看学习进度.
-
-    GET /api/v1/training/progress
-    """
-    user_id = 1  # 实际项目中从认证获取
-    progress = LearningProgressService.get_user_progress(user_id)
-    return progress
-
-
-@training_router.get("/assignments/pending", response=PaginatedPendingAssignmentList)
-def get_pending_assignments(
-    request,
-    page: int = 1,
-    page_size: int = 20,
-):
-    """查看待批改作业(讲师视角).
-
-    GET /api/v1/training/assignments/pending
-    """
-    instructor_id = 1  # 实际项目中从认证获取
-    result = AssignmentService.get_pending_assignments(instructor_id, page, page_size)
-    return result
-
-
-@training_router.get("/assignments/review/{submission_id}", response=AssignmentReviewSchema)
-def get_assignment_review(request, submission_id: int):
-    """查看作业详情.
-
-    GET /api/v1/training/assignments/review/{submission_id}
-    """
-    submission = AssignmentService.get_assignment_detail(submission_id)
-    if not submission:
-        raise HttpError(404, "作业提交不存在")
+    import os
+    import uuid
+    from django.conf import settings
+    
+    # 验证文件类型
+    allowed_types = [
+        "image/jpeg", "image/png", "image/gif",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    
+    if file.content_type not in allowed_types:
+        raise HttpError(400, "不支持的文件类型，仅支持 JPG/PNG/GIF/PDF/DOC/DOCX")
+    
+    # 验证文件大小 (5MB)
+    max_size = 5 * 1024 * 1024
+    if file.size > max_size:
+        raise HttpError(400, "文件大小超过5MB限制")
+    
+    # 生成唯一文件名
+    ext = os.path.splitext(file.name)[1].lower()
+    filename = f"{uuid.uuid4().hex}{ext}"
+    
+    # 确定存储路径 (按日期分目录)
+    from datetime import datetime
+    today = datetime.now()
+    relative_path = f"questions/{today.year}/{today.month:02d}/{filename}"
+    full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    
+    # 保存文件
+    with open(full_path, "wb+") as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    
+    # 返回文件URL
+    file_url = f"{settings.MEDIA_URL}{relative_path}"
+    
     return {
-        'id': submission.id,
-        'assignment_id': submission.assignment.id,
-        'assignment_title': submission.assignment.title,
-        'course_id': submission.assignment.course.id,
-        'course_title': submission.assignment.course.title,
-        'content': submission.content,
-        'attachment_url': submission.attachment_url,
-        'status': submission.status,
-        'score': submission.score,
-        'feedback': submission.feedback,
-        'submitted_at': submission.submitted_at,
-        'graded_at': submission.graded_at,
+        "code": 200,
+        "message": "上传成功",
+        "data": {
+            "name": file.name,
+            "url": file_url,
+            "size": file.size,
+            "type": file.content_type,
+        },
     }
 
 
-@training_router.get("/submissions/me", response=List[AssignmentSubmissionSchema])
-def get_my_assignment_reviews(request):
-    """查看个人作业批改情况.
+# ==================== 主路由 ====================
 
-    GET /api/v1/training/submissions/me
-    """
-    user_id = 1  # 实际项目中从认证获取
-    submissions = AssignmentService.get_user_submissions(user_id)
-    return submissions
+# 创建主路由
+router = Router(tags=["API"])
 
+# 挂载问题管理路由
+router.add_router("/questions", question_router)
 
-@training_router.get("/submissions/{submission_id}", response=AssignmentSubmissionSchema)
-def get_submission_detail(request, submission_id: int):
-    """作业回显 - 获取用户提交的作业详情.
-
-    GET /api/v1/training/submissions/{submission_id}
-    """
-    submission = AssignmentService.get_assignment_detail(submission_id)
-    if not submission:
-        raise HttpError(404, "作业提交不存在")
-    return {
-        'id': submission.id,
-        'assignment_id': submission.assignment.id,
-        'assignment_title': submission.assignment.title,
-        'content': submission.content,
-        'attachment_url': submission.attachment_url,
-        'status': submission.status,
-        'score': submission.score,
-        'feedback': submission.feedback,
-        'submitted_at': submission.submitted_at,
-        'graded_at': submission.graded_at,
-    }
-
-
-@training_router.get("/courses", response=PaginatedCourseList)
-def get_my_courses(
-    request,
-    page: int = 1,
-    page_size: int = 20,
-):
-    """获取我的培训课程列表.
-
-    GET /api/v1/training/courses
-    """
-    user_id = 1  # 实际项目中从认证获取
-    result = CourseService.get_user_courses(user_id, page, page_size)
-    return result
-
-
-@training_router.get("/courses/{course_id}", response=CourseDetailSchema)
-def get_course_detail(request, course_id: int):
-    """获取课程详情(含课件、章节).
-
-    GET /api/v1/training/courses/{course_id}
-    """
-    user_id = 1  # 实际项目中从认证获取
-    course = CourseService.get_course_detail(course_id, user_id)
-    if not course:
-        raise HttpError(404, "课程不存在或您未报名该课程")
-    return course
-
-
-@training_router.post("/courses/{course_id}/chapters/{chapter_id}/complete", response=ChapterProgressSchema)
-def mark_chapter_complete(request, course_id: int, chapter_id: int):
-    """标记章节完成(上报学习进度).
-
-    POST /api/v1/training/courses/{course_id}/chapters/{chapter_id}/complete
-    """
-    user_id = 1  # 实际项目中从认证获取
-    try:
-        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user_id)
-    except:
-        raise HttpError(404, "您未报名该课程")
-
-    progress = LearningProgressService.mark_chapter_completed(enrollment.id, chapter_id)
-    if not progress:
-        raise HttpError(404, "章节不存在")
-    return {
-        'id': progress.id,
-        'chapter_id': progress.chapter_id,
-        'is_completed': progress.is_completed,
-        'completed_at': progress.completed_at,
-    }
-
-
-@training_router.post("/assignments/{assignment_id}/submit", response=AssignmentSubmissionSchema)
-def submit_assignment(request, assignment_id: int, data: AssignmentSubmissionCreateSchema):
-    """提交作业.
-
-    POST /api/v1/training/assignments/{assignment_id}/submit
-    """
-    user_id = 1  # 实际项目中从认证获取
-    submission = AssignmentService.submit_assignment(
-        assignment_id=assignment_id,
-        user_id=user_id,
-        content=data.content,
-        attachment_url=data.attachment_url or ""
-    )
-    return {
-        'id': submission.id,
-        'assignment_id': submission.assignment.id,
-        'assignment_title': submission.assignment.title,
-        'content': submission.content,
-        'attachment_url': submission.attachment_url,
-        'status': submission.status,
-        'score': submission.score,
-        'feedback': submission.feedback,
-        'submitted_at': submission.submitted_at,
-        'graded_at': submission.graded_at,
-    }
-
-
-@training_router.post("/submissions/{submission_id}/resubmit", response=AssignmentSubmissionSchema)
-def resubmit_assignment(request, submission_id: int, data: AssignmentSubmissionCreateSchema):
-    """重新提交作业.
-
-    POST /api/v1/training/submissions/{submission_id}/resubmit
-    """
-    submission = AssignmentService.resubmit_assignment(
-        submission_id=submission_id,
-        content=data.content,
-        attachment_url=data.attachment_url or ""
-    )
-    if not submission:
-        raise HttpError(400, "只有已批改的作业才能重新提交")
-    return {
-        'id': submission.id,
-        'assignment_id': submission.assignment.id,
-        'assignment_title': submission.assignment.title,
-        'content': submission.content,
-        'attachment_url': submission.attachment_url,
-        'status': submission.status,
-        'score': submission.score,
-        'feedback': submission.feedback,
-        'submitted_at': submission.submitted_at,
-        'graded_at': submission.graded_at,
-    }
-
-
-@training_router.get("/notifications", response=PaginatedNotificationList)
-def get_training_notifications(
-    request,
-    page: int = 1,
-    page_size: int = 20,
-):
-    """获取培训通知列表.
-
-    GET /api/v1/training/notifications
-    """
-    user_id = 1  # 实际项目中从认证获取
-    result = NotificationService.get_user_notifications(user_id, page, page_size)
-    return result
-
-
-@training_router.post("/courses/{course_id}/review", response=CourseReviewSchema)
-def submit_course_review(request, course_id: int, data: CourseReviewCreateSchema):
-    """课程评价提交.
-
-    POST /api/v1/training/courses/{course_id}/review
-    """
-    user_id = 1  # 实际项目中从认证获取
-    try:
-        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user_id)
-    except:
-        raise HttpError(404, "您未报名该课程")
-
-    if data.rating < 1 or data.rating > 5:
-        raise HttpError(400, "评分必须在1-5之间")
-
-    review = CourseReviewService.create_review(enrollment.id, data.rating, data.content)
-    if not review:
-        raise HttpError(500, "评价提交失败")
-    return {
-        'id': review.id,
-        'course_id': course_id,
-        'rating': review.rating,
-        'content': review.content,
-        'created_at': review.created_at,
-    }
-
-
-# 挂载子路由
-router.add_router("/v1", enrollment_router)
-router.add_router("/v1/training", training_router)

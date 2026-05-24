@@ -120,3 +120,91 @@ class QuestionDetailSchema(Schema):
 class QuestionStatusUpdateSchema(Schema):
     """更新问题状态请求."""
     status: str  # pending, replied, resolved
+
+
+# ==================== 报名相关 Schema ====================
+
+class EnrollmentCreateSchema(Schema):
+    """创建报名请求."""
+    course_name: str
+    department: str
+    position: str
+    reason: str
+
+class EnrollmentUpdateSchema(Schema):
+    """更新报名请求."""
+    course_name: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    reason: Optional[str] = None
+
+class EnrollmentSchema(Schema):
+    """报名记录详情."""
+    model_config = dict(from_attributes=True)
+    
+    id: int
+    user_id: int
+    course_name: str
+    department: str
+    position: str
+    reason: str
+    status: str
+    status_display: str
+    submitted_at: datetime
+    updated_at: datetime
+
+class EnrollmentListSchema(Schema):
+    """报名列表响应."""
+    data: List[EnrollmentSchema]
+    pagination: PaginationSchema
+
+class EnrollmentStatusUpdateSchema(Schema):
+    """更新报名状态请求."""
+    status: str  # pending, approved, rejected, cancelled
+
+# ==================== 草稿相关 Schema ====================
+
+class DraftCreateSchema(Schema):
+    """创建草稿请求."""
+    course_name: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    reason: Optional[str] = None
+    draft_data: dict = {}
+
+class DraftUpdateSchema(Schema):
+    """更新草稿请求."""
+    course_name: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    reason: Optional[str] = None
+    draft_data: Optional[dict] = None
+
+class DraftSchema(Schema):
+    """草稿详情."""
+    model_config = dict(from_attributes=True)
+    
+    id: int
+    user_id: int
+    course_name: str
+    department: str
+    position: str
+    reason: str
+    draft_data: dict
+    created_at: datetime
+    updated_at: datetime
+
+class DraftListSchema(Schema):
+    """草稿列表响应."""
+    data: List[DraftSchema]
+    pagination: PaginationSchema
+
+# ==================== 文件相关 Schema ====================
+
+class FileUploadResponseSchema(Schema):
+    """文件上传响应."""
+    id: int
+    file_name: str
+    file_path: str
+    file_size: int
+    uploaded_at: datetime

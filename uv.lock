@@ -493,6 +493,7 @@ dependencies = [
     { name = "django-ninja" },
     { name = "email-validator" },
     { name = "pydantic" },
+    { name = "pymysql" },
     { name = "python-dotenv" },
 ]
 
@@ -546,6 +547,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'storage'", specifier = ">=10.0.0" },
     { name = "psycopg2-binary", marker = "extra == 'db'", specifier = ">=2.9.12" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pymysql", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "qiniu", marker = "extra == 'storage'", specifier = ">=7.11.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.0" },
@@ -1461,6 +1463,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2d/8b/93ee7af674045965e18cc53357bc338d24d2ca47bb71a750c0e38d1cc462/pyhanko_certvalidator-0.31.1.tar.gz", hash = "sha256:b7abc5672878994a050cf70a19b8247891aa30c9e6507eea77a6b10c7dbc1e50", size = 584700, upload-time = "2026-05-06T00:00:51.779Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/99/722e90c586455733fa860d092722ef074f3a65449fe9787b7b7e2dafcd1f/pyhanko_certvalidator-0.31.1-py3-none-any.whl", hash = "sha256:0aabe25b536ed555f3b18e5eb2c62ff46adeff9d15e27f0c9d5d81952d956f45", size = 111438, upload-time = "2026-05-06T00:00:50.198Z" },
+]
+
+[[package]]
+name = "pymysql"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/bc/1c6a92f385940f727daeecf3bacaf186e03875dff57197801046c583bcf0/pymysql-1.2.0.tar.gz", hash = "sha256:6c7b17ca686988104d7426c27895b455cdeea3e9d3ceb1270f0c3704fead8c33", size = 49021, upload-time = "2026-05-19T08:26:22.302Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/bd/2534e130295c8cfd4f0a2e31623baab7502278f1e97bcfe61db75656a77f/pymysql-1.2.0-py3-none-any.whl", hash = "sha256:62169ce6d5510f08e140c5e7990ee884a9764024e4a9a27b2cc11f1099322ae0", size = 45716, upload-time = "2026-05-19T08:26:20.974Z" },
 ]
 
 [[package]]

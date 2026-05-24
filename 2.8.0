@@ -1,0 +1,39 @@
+Collecting Django==3.2.24
+  Downloading Django-3.2.24-py3-none-any.whl (7.9 MB)
+     ---------------------------------------- 7.9/7.9 MB 7.8 MB/s eta 0:00:00
+Collecting django-ninja==1.3.0
+  Downloading django_ninja-1.3.0-py3-none-any.whl (2.4 MB)
+     ---------------------------------------- 2.4/2.4 MB 7.7 MB/s eta 0:00:00
+Requirement already satisfied: pydantic in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (2.13.4)
+Collecting email-validator
+  Downloading email_validator-2.3.0-py3-none-any.whl (35 kB)
+Requirement already satisfied: python-dotenv in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (1.2.2)
+Collecting django-cors-headers==3.14.0
+  Downloading django_cors_headers-3.14.0-py3-none-any.whl (13 kB)
+Collecting dj-database-url
+  Downloading dj_database_url-3.1.2-py3-none-any.whl (9.0 kB)
+Collecting PyJWT
+  Downloading pyjwt-2.13.0-py3-none-any.whl (31 kB)
+Collecting asgiref<4,>=3.3.2
+  Downloading asgiref-3.11.1-py3-none-any.whl (24 kB)
+Requirement already satisfied: pytz in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from Django==3.2.24) (2026.2)
+Collecting sqlparse>=0.2.2
+  Downloading sqlparse-0.5.5-py3-none-any.whl (46 kB)
+     -------------------------------------- 46.1/46.1 kB 460.2 kB/s eta 0:00:00
+Requirement already satisfied: annotated-types>=0.6.0 in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from pydantic) (0.7.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from pydantic) (0.4.2)
+Requirement already satisfied: pydantic-core==2.46.4 in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from pydantic) (2.46.4)
+Requirement already satisfied: typing-extensions>=4.14.1 in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from pydantic) (4.15.0)
+Requirement already satisfied: idna>=2.0.0 in c:\users\aurora\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from email-validator) (3.14)
+Collecting dnspython>=2.0.0
+  Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+     -------------------------------------- 331.1/331.1 kB 5.1 MB/s eta 0:00:00
+Collecting dj-database-url
+  Downloading dj_database_url-3.1.1-py3-none-any.whl (9.0 kB)
+  Downloading dj_database_url-3.1.0-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-3.0.1-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-3.0.0-py3-none-any.whl (8.8 kB)
+  Downloading dj_database_url-2.3.0-py3-none-any.whl (7.8 kB)
+  Downloading dj_database_url-2.2.0-py3-none-any.whl (7.8 kB)
+Installing collected packages: sqlparse, PyJWT, dnspython, asgiref, email-validator, Django, django-ninja, django-cors-headers, dj-database-url
+Successfully installed Django-3.2.24 PyJWT-2.13.0 asgiref-3.11.1 dj-database-url-2.2.0 django-cors-headers-3.14.0 django-ninja-1.3.0 dnspython-2.8.0 email-validator-2.3.0 sqlparse-0.5.5

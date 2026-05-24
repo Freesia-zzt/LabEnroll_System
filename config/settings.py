@@ -25,6 +25,7 @@ ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(",") if h.strip()]
 
 # Application definition
 DJANGO_APPS = [
+    "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
 ]
@@ -76,7 +77,9 @@ DATABASES = {
     )
 }
 
-# Password validation (已禁用，因项目不使用 Django 内置认证系统)
+AUTH_USER_MODEL = "api.LabUser"
+
+# Password validation
 AUTH_PASSWORD_VALIDATORS = []
 
 # Internationalization
@@ -154,5 +157,13 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = "DENY"
 
-# Ninja API 配置（django-ninja 支持的配置项）
+# Ninja API 配置
 NINJA_PAGINATION_PER_PAGE = 20
+
+# ==================== JWT 认证配置 ====================
+
+JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
+JWT_ALGORITHM = "HS256"
+JWT_ACCESS_TOKEN_EXPIRE_HOURS = 24
+JWT_REFRESH_TOKEN_EXPIRE_DAYS = 7
+JWT_REMEMBER_ME_EXPIRE_DAYS = 7

@@ -69,12 +69,17 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 import dj_database_url  # noqa: E402
 
+# 使用 dj_database_url 解析数据库 URL
+db_url = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
 DATABASES = {
-    "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600,
-    )
+    "default": dj_database_url.parse(db_url, conn_max_age=600)
 }
+
+# 如果是 MySQL 数据库，添加字符集配置
+if DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["charset"] = "utf8mb4"
+    DATABASES["default"]["OPTIONS"]["init_command"] = "SET default_storage_engine=INNODB"
 
 # Password validation (已禁用，因项目不使用 Django 内置认证系统)
 AUTH_PASSWORD_VALIDATORS = []

@@ -310,3 +310,100 @@ class PaginatedPendingAssignmentList(Schema):
     page: int
     page_size: int
     items: List[PendingAssignmentSchema]
+
+
+# ==================== 学员问题管理 Schema ====================
+
+class PaginationSchema(Schema):
+    """分页信息."""
+    total: int
+    current_page: int
+    per_page: int
+    last_page: int
+
+
+class UserBriefSchema(Schema):
+    """用户简要信息."""
+    model_config = dict(from_attributes=True)
+    id: int
+    name: str
+    avatar: Optional[str] = None
+
+
+class QuestionReplyCreateSchema(Schema):
+    """创建回复请求."""
+    content: str
+
+
+class QuestionReplySchema(Schema):
+    """回复详情."""
+    model_config = dict(from_attributes=True)
+    id: int
+    content: str
+    author: UserBriefSchema
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionCreateSchema(Schema):
+    """创建问题请求."""
+    title: str
+    content: str
+    category: str = "other"
+    attachments: List[str] = []
+
+
+class QuestionUpdateSchema(Schema):
+    """更新问题请求."""
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    attachments: Optional[List[str]] = None
+
+
+class QuestionFilterSchema(Schema):
+    """问题列表筛选参数."""
+    page: int = 1
+    per_page: int = 10
+    category: Optional[str] = None
+    status: Optional[str] = None
+    search: Optional[str] = None
+
+
+class QuestionBriefSchema(Schema):
+    """问题列表项（简要信息）."""
+    model_config = dict(from_attributes=True)
+    id: int
+    title: str
+    category: str
+    status: str
+    reply_count: int
+    created_at: datetime
+    author: UserBriefSchema
+
+
+class QuestionListSchema(Schema):
+    """问题列表响应."""
+    data: List[QuestionBriefSchema]
+    pagination: PaginationSchema
+
+
+class QuestionDetailSchema(Schema):
+    """问题详情."""
+    model_config = dict(from_attributes=True)
+    id: int
+    title: str
+    content: str
+    category: str
+    status: str
+    attachments: List[str]
+    reply_count: int
+    created_at: datetime
+    updated_at: datetime
+    author: UserBriefSchema
+    replies: List[QuestionReplySchema]
+
+
+class QuestionStatusUpdateSchema(Schema):
+    """更新问题状态请求."""
+    status: str

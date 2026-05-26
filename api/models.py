@@ -304,3 +304,106 @@ class EnrollmentFile(models.Model):
 
     def __str__(self):
         return self.file_name
+
+
+# ==================== 学员问题管理模块 ====================
+
+class Question(models.Model):
+    """问题模型."""
+
+    STATUS_PENDING = "pending"
+    STATUS_REPLIED = "replied"
+    STATUS_RESOLVED = "resolved"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "未回复"),
+        (STATUS_REPLIED, "已回复"),
+        (STATUS_RESOLVED, "已解决"),
+    ]
+
+    CATEGORY_TECH = "technical"
+    CATEGORY_ENV = "environment"
+    CATEGORY_PROCESS = "process"
+    CATEGORY_OTHER = "other"
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_TECH, "技术问题"),
+        (CATEGORY_ENV, "环境问题"),
+        (CATEGORY_PROCESS, "流程问题"),
+        (CATEGORY_OTHER, "其他"),
+    ]
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="questions",
+        verbose_name="提问者",
+    )
+
+    title = models.CharField(max_length=200, verbose_name="问题标题")
+    content = models.TextField(verbose_name="问题内容")
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_OTHER,
+        verbose_name="问题分类",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        verbose_name="问题状态",
+    )
+
+    attachments = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="附件列表",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "问题"
+        verbose_name_plural = "问题"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def reply_count(self) -> int:
+        """获取回复数量."""
+        return self.replies.count()
+
+
+class QuestionReply(models.Model):
+    """问题回复模型."""
+
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="replies",
+        verbose_name="所属问题",
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="question_replies",
+        verbose_name="回复者",
+    )
+
+    content = models.TextField(verbose_name="回复内容")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "问题回复"
+        verbose_name_plural = "问题回复"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"回复-{self.question.title[:20]}..."

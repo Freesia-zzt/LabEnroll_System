@@ -3,13 +3,15 @@ from typing import List, Optional
 from datetime import datetime
 
 from django.core.files.uploadedfile import UploadedFile
+from django.db import models
 from django.db.models import Count, Avg, Sum, Q
 from django.utils import timezone
 
 from .models import (
     Enrollment, EnrollmentDraft, EnrollmentFile,
     Course, Chapter, Courseware, CourseEnrollment, ChapterProgress,
-    Assignment, AssignmentSubmission, TrainingNotification, CourseReview
+    Assignment, AssignmentSubmission, TrainingNotification, CourseReview,
+    Question, QuestionReply,
 )
 
 
@@ -806,3 +808,105 @@ class CourseReviewService:
             )
         except CourseEnrollment.DoesNotExist:
             return None
+
+
+# ==================== 学员问题管理服务 ====================
+
+class QuestionService:
+    """问题服务类."""
+
+    @staticmethod
+    def create_question(
+        author,
+        title: str,
+        content: str,
+        category: str,
+        attachments: list,
+    ):
+        return Question.objects.create(
+            author=author,
+            title=title,
+            content=content,
+            category=category,
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def get_question_list(
+        user=None,
+        category: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 10,
+    ):
+        queryset = Question.objects.all()
+        if user:
+            queryset = queryset.filter(author=user)
+        if category:
+            queryset = queryset.filter(category=category)
+        if status and status != "all":
+            queryset = queryset.filter(status=status)
+        if search:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search) | models.Q(content__icontains=search)
+            )
+        total = queryset.count()
+        start = (page - 1) * per_page
+        end = start + per_page
+        queryset = queryset[start:end]
+        return queryset, total
+
+    @staticmethod
+    def get_question_detail(question_id: int):
+        try:
+            return Question.objects.prefetch_related("replies", "replies__author").get(
+                id=question_id
+            )
+        except Question.DoesNotExist:
+            return None
+
+    @staticmethod
+    def update_question(
+        question,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        category: Optional[str] = None,
+        attachments: Optional[list] = None,
+    ):
+        if title is not None:
+            question.title = title
+        if content is not None:
+            question.content = content
+        if category is not None:
+            question.category = category
+        if attachments is not None:
+            question.attachments = attachments
+        question.save()
+        return question
+
+    @staticmethod
+    def update_question_status(question, status: str):
+        question.status = status
+        question.save()
+        return question
+
+    @staticmethod
+    def delete_question(question):
+        question.delete()
+
+
+class QuestionReplyService:
+    """问题回复服务类."""
+
+    @staticmethod
+    def create_reply(question, author, content: str):
+        reply = QuestionReply.objects.create(
+            question=question,
+            author=author,
+            content=content,
+        )
+        if question.status == Question.STATUS_PENDING:
+            question.status = Question.STATUS_REPLIED
+            question.save()
+        return reply

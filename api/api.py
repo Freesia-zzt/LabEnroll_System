@@ -1,9 +1,7 @@
-"""API 路由定义 - 学员问题管理模块."""
-
-from typing import Optional
+"""API 路由定义."""
 
 from django.http import HttpRequest
-from ninja import Router, File, UploadedFile
+from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
 from api.auth_utils import api_response, auth_bearer
@@ -15,8 +13,18 @@ from api.schemas import (
     ForgotPasswordResetInput,
     ForgotPasswordSendCodeInput,
     LoginInput,
+from api.models import Enrollment, EnrollmentFile, Question, User
+from api.schemas import (
+    DraftCreateSchema,
+    DraftListSchema,
+    DraftSchema,
+    DraftUpdateSchema,
+    # 报名相关 Schema
+    EnrollmentCreateSchema,
+    EnrollmentListSchema,
+    EnrollmentSchema,
+    FileUploadResponseSchema,
     MessageSchema,
-    PaginationSchema,
     QuestionBriefSchema,
     QuestionCreateSchema,
     QuestionDetailSchema,
@@ -30,6 +38,13 @@ from api.schemas import (
     SendActivationCodeInput,
     UpdateInfoInput,
     VerifyActivationCodeInput,
+)
+from api.services import (
+    EnrollmentDraftService,
+    EnrollmentFileService,
+    EnrollmentService,
+    QuestionReplyService,
+    QuestionService,
 )
 from api.services import AuthService, QuestionReplyService, QuestionService
 
@@ -196,9 +211,10 @@ question_router = Router(tags=["问题管理"])
 
 # ==================== 认证相关（简化版）====================
 
+
 def get_current_user(request: HttpRequest) -> User:
     """获取当前登录用户（简化实现）.
-    
+
     实际项目中应该从 JWT Token 或 Session 中解析用户
     """
     # 这里简化处理，实际应该从请求头获取 token 并解析
@@ -211,6 +227,7 @@ def get_current_user(request: HttpRequest) -> User:
 
 # ==================== 问题 CRUD 接口 ====================
 
+
 @question_router.get(
     "/categories",
     response={200: list},
@@ -219,8 +236,7 @@ def get_current_user(request: HttpRequest) -> User:
 def get_question_categories(request: HttpRequest) -> list:
     """获取所有问题分类列表."""
     return [
-        {"value": value, "label": label}
-        for value, label in Question.CATEGORY_CHOICES
+        {"value": value, "label": label} for value, label in Question.CATEGORY_CHOICES
     ]
 
 
@@ -234,16 +250,16 @@ def create_question(
     data: QuestionCreateSchema,
 ) -> QuestionBriefSchema:
     """创建新问题.
-    
+
     需要登录权限
     """
     user = get_current_user(request)
-    
+
     # 验证分类是否有效
     valid_categories = [c[0] for c in Question.CATEGORY_CHOICES]
     if data.category not in valid_categories:
         raise HttpError(400, f"无效的分类，可选: {valid_categories}")
-    
+
     question = QuestionService.create_question(
         author=user,
         title=data.title,
@@ -251,7 +267,7 @@ def create_question(
         category=data.category,
         attachments=data.attachments,
     )
-    
+
     return 201, question
 
 
@@ -265,15 +281,20 @@ def list_questions(
     filters: QuestionFilterSchema = QuestionFilterSchema(),
 ) -> QuestionListSchema:
     """获取问题列表.
-    
+
     支持分页、分类筛选、状态筛选、关键词搜索
     """
     user = get_current_user(request)
-    
+
     # 验证状态参数
-    if filters.status and filters.status not in ["all", "pending", "replied", "resolved"]:
+    if filters.status and filters.status not in [
+        "all",
+        "pending",
+        "replied",
+        "resolved",
+    ]:
         raise HttpError(400, "无效的状态参数")
-    
+
     questions, total = QuestionService.get_question_list(
         user=user,
         category=filters.category,
@@ -282,10 +303,10 @@ def list_questions(
         page=filters.page,
         per_page=filters.per_page,
     )
-    
+
     # 计算分页信息
     last_page = (total + filters.per_page - 1) // filters.per_page
-    
+
     return {
         "data": list(questions),
         "pagination": {
@@ -308,10 +329,10 @@ def get_question(
 ) -> QuestionDetailSchema:
     """获取单个问题详情，包含回复列表."""
     question = QuestionService.get_question_detail(question_id)
-    
+
     if not question:
         raise HttpError(404, "问题不存在")
-    
+
     return question
 
 
@@ -326,23 +347,23 @@ def update_question(
     data: QuestionUpdateSchema,
 ) -> QuestionBriefSchema:
     """修改问题内容.
-    
+
     仅问题发布者可修改
     """
     user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
-    
+
     if not question:
         raise HttpError(404, "问题不存在")
-    
+
     # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权修改此问题")
-    
+
     # 已解决的问题不能修改
     if question.status == Question.STATUS_RESOLVED:
         raise HttpError(400, "已解决的问题不能修改")
-    
+
     updated = QuestionService.update_question(
         question=question,
         title=data.title,
@@ -350,7 +371,7 @@ def update_question(
         category=data.category,
         attachments=data.attachments,
     )
-    
+
     return updated
 
 
@@ -364,21 +385,21 @@ def delete_question(
     question_id: int,
 ) -> MessageSchema:
     """删除问题.
-    
+
     仅问题发布者可删除
     """
     user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
-    
+
     if not question:
         raise HttpError(404, "问题不存在")
-    
+
     # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权删除此问题")
-    
+
     QuestionService.delete_question(question)
-    
+
     return {"message": "删除成功"}
 
 
@@ -393,29 +414,30 @@ def update_question_status(
     data: QuestionStatusUpdateSchema,
 ) -> QuestionBriefSchema:
     """更新问题状态（标记已解决等）.
-    
+
     仅问题发布者可操作
     """
     user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
-    
+
     if not question:
         raise HttpError(404, "问题不存在")
-    
+
     # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权操作此问题")
-    
+
     # 验证状态值
     valid_statuses = [s[0] for s in Question.STATUS_CHOICES]
     if data.status not in valid_statuses:
         raise HttpError(400, f"无效的状态，可选: {valid_statuses}")
-    
+
     updated = QuestionService.update_question_status(question, data.status)
     return updated
 
 
 # ==================== 问题回复接口 ====================
+
 
 @question_router.post(
     "/{question_id}/replies",
@@ -430,20 +452,21 @@ def create_reply(
     """对问题发表回复."""
     user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
-    
+
     if not question:
         raise HttpError(404, "问题不存在")
-    
+
     reply = QuestionReplyService.create_reply(
         question=question,
         author=user,
         content=data.content,
     )
-    
+
     return 201, reply
 
 
 # ==================== 文件上传接口 ====================
+
 
 @question_router.post(
     "/upload",
@@ -455,51 +478,55 @@ def upload_question_file(
     file: UploadedFile = File(...),
 ) -> dict:
     """上传问题附件或图片.
-    
+
     支持图片(JPG/PNG/GIF)和文档(PDF/DOC/DOCX)格式
     文件大小限制: 5MB
     """
     import os
     import uuid
+
     from django.conf import settings
-    
+
     # 验证文件类型
     allowed_types = [
-        "image/jpeg", "image/png", "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
-    
+
     if file.content_type not in allowed_types:
         raise HttpError(400, "不支持的文件类型，仅支持 JPG/PNG/GIF/PDF/DOC/DOCX")
-    
+
     # 验证文件大小 (5MB)
     max_size = 5 * 1024 * 1024
     if file.size > max_size:
         raise HttpError(400, "文件大小超过5MB限制")
-    
+
     # 生成唯一文件名
     ext = os.path.splitext(file.name)[1].lower()
     filename = f"{uuid.uuid4().hex}{ext}"
-    
+
     # 确定存储路径 (按日期分目录)
     from datetime import datetime
+
     today = datetime.now()
     relative_path = f"questions/{today.year}/{today.month:02d}/{filename}"
     full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
-    
+
     # 确保目录存在
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    
+
     # 保存文件
     with open(full_path, "wb+") as destination:
         for chunk in file.chunks():
             destination.write(chunk)
-    
+
     # 返回文件URL
     file_url = f"{settings.MEDIA_URL}{relative_path}"
-    
+
     return {
         "code": 200,
         "message": "上传成功",
@@ -519,6 +546,7 @@ enrollment_router = Router(tags=["报名相关"])
 
 # ==================== 报名接口 ====================
 
+
 @enrollment_router.post(
     "/enrollments",
     response={201: EnrollmentSchema},
@@ -530,7 +558,7 @@ def create_enrollment(
 ) -> EnrollmentSchema:
     """提交新的培训课程报名申请."""
     user = get_current_user(request)
-    
+
     enrollment = EnrollmentService.create_enrollment(
         user=user,
         course_name=data.course_name,
@@ -538,7 +566,7 @@ def create_enrollment(
         position=data.position,
         reason=data.reason,
     )
-    
+
     return 201, enrollment
 
 
@@ -551,20 +579,20 @@ def list_enrollments(
     request: HttpRequest,
     page: int = 1,
     per_page: int = 20,
-    status: Optional[str] = None,
+    status: str | None = None,
 ) -> EnrollmentListSchema:
     """获取当前用户的报名记录列表（分页）."""
     user = get_current_user(request)
-    
+
     enrollments, total = EnrollmentService.get_enrollment_list(
         user=user,
         status=status,
         page=page,
         per_page=per_page,
     )
-    
+
     last_page = (total + per_page - 1) // per_page
-    
+
     return {
         "data": list(enrollments),
         "pagination": {
@@ -588,14 +616,14 @@ def get_enrollment(
     """获取指定报名记录的详细信息."""
     user = get_current_user(request)
     enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
-    
+
     if not enrollment:
         raise HttpError(404, "报名记录不存在")
-    
+
     # 检查权限
     if enrollment.user_id != user.id:
         raise HttpError(403, "无权查看此报名记录")
-    
+
     return enrollment
 
 
@@ -611,24 +639,25 @@ def cancel_enrollment(
     """取消指定的报名记录."""
     user = get_current_user(request)
     enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
-    
+
     if not enrollment:
         raise HttpError(404, "报名记录不存在")
-    
+
     # 检查权限
     if enrollment.user_id != user.id:
         raise HttpError(403, "无权操作此报名记录")
-    
+
     # 已通过的报名不能取消
     if enrollment.status == Enrollment.STATUS_APPROVED:
         raise HttpError(400, "已通过的报名不能取消")
-    
+
     EnrollmentService.cancel_enrollment(enrollment)
-    
+
     return {"message": "报名已取消"}
 
 
 # ==================== 草稿接口 ====================
+
 
 @enrollment_router.post(
     "/drafts",
@@ -641,7 +670,7 @@ def create_draft(
 ) -> DraftSchema:
     """保存未完成的报名表单草稿."""
     user = get_current_user(request)
-    
+
     draft = EnrollmentDraftService.create_draft(
         user=user,
         course_name=data.course_name or "",
@@ -650,7 +679,7 @@ def create_draft(
         reason=data.reason or "",
         draft_data=data.draft_data,
     )
-    
+
     return 201, draft
 
 
@@ -666,15 +695,15 @@ def list_drafts(
 ) -> DraftListSchema:
     """获取当前用户的草稿列表（分页）."""
     user = get_current_user(request)
-    
+
     drafts, total = EnrollmentDraftService.get_draft_list(
         user=user,
         page=page,
         per_page=per_page,
     )
-    
+
     last_page = (total + per_page - 1) // per_page
-    
+
     return {
         "data": list(drafts),
         "pagination": {
@@ -698,10 +727,10 @@ def get_draft(
     """获取指定草稿的详细信息（加载表单草稿）."""
     user = get_current_user(request)
     draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
-    
+
     if not draft:
         raise HttpError(404, "草稿不存在")
-    
+
     return draft
 
 
@@ -718,10 +747,10 @@ def update_draft(
     """更新指定草稿的内容."""
     user = get_current_user(request)
     draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
-    
+
     if not draft:
         raise HttpError(404, "草稿不存在")
-    
+
     updated = EnrollmentDraftService.update_draft(
         draft=draft,
         course_name=data.course_name,
@@ -730,7 +759,7 @@ def update_draft(
         reason=data.reason,
         draft_data=data.draft_data,
     )
-    
+
     return updated
 
 
@@ -746,12 +775,12 @@ def delete_draft(
     """删除指定的草稿."""
     user = get_current_user(request)
     draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
-    
+
     if not draft:
         raise HttpError(404, "草稿不存在")
-    
+
     EnrollmentDraftService.delete_draft(draft)
-    
+
     return {"message": "草稿已删除"}
 
 
@@ -765,13 +794,14 @@ def clear_all_drafts(
 ) -> MessageSchema:
     """清空当前用户的所有草稿."""
     user = get_current_user(request)
-    
+
     deleted_count = EnrollmentDraftService.clear_all_drafts(user)
-    
+
     return {"message": f"已清空 {deleted_count} 个草稿"}
 
 
 # ==================== 文件上传接口 ====================
+
 
 @enrollment_router.post(
     "/files",
@@ -781,52 +811,54 @@ def clear_all_drafts(
 def upload_enrollment_file(
     request: HttpRequest,
     file: UploadedFile = File(...),
-    enrollment_id: Optional[int] = None,
-    draft_id: Optional[int] = None,
+    enrollment_id: int | None = None,
+    draft_id: int | None = None,
 ) -> FileUploadResponseSchema:
     """上传报名相关文件."""
     user = get_current_user(request)
-    
+
     # 验证参数（必须指定 enrollment_id 或 draft_id）
     if not enrollment_id and not draft_id:
         raise HttpError(400, "必须指定 enrollment_id 或 draft_id")
-    
+
     # 获取关联对象
     enrollment = None
     draft = None
-    
+
     if enrollment_id:
         enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
         if not enrollment or enrollment.user_id != user.id:
             raise HttpError(404, "报名记录不存在或无权限")
-    
+
     if draft_id:
         draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
         if not draft:
             raise HttpError(404, "草稿不存在")
-    
+
     # 验证文件类型
     allowed_types = [
-        "image/jpeg", "image/png", "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
-    
+
     if file.content_type not in allowed_types:
         raise HttpError(400, "不支持的文件类型")
-    
+
     # 验证文件大小 (10MB)
     max_size = 10 * 1024 * 1024
     if file.size > max_size:
         raise HttpError(400, "文件大小超过10MB限制")
-    
+
     uploaded_file = EnrollmentFileService.upload_file(
         file=file,
         enrollment=enrollment,
         draft=draft,
     )
-    
+
     return uploaded_file
 
 
@@ -841,12 +873,12 @@ def delete_enrollment_file(
 ) -> MessageSchema:
     """删除指定的文件."""
     user = get_current_user(request)
-    
+
     try:
         enrollment_file = EnrollmentFile.objects.get(id=file_id)
-    except EnrollmentFile.DoesNotExist:
-        raise HttpError(404, "文件不存在")
-    
+    except EnrollmentFile.DoesNotExist as err:
+        raise HttpError(404, "文件不存在") from err
+
     # 检查权限
     if enrollment_file.enrollment:
         if enrollment_file.enrollment.user_id != user.id:
@@ -854,9 +886,9 @@ def delete_enrollment_file(
     elif enrollment_file.draft:
         if enrollment_file.draft.user_id != user.id:
             raise HttpError(403, "无权删除此文件")
-    
+
     EnrollmentFileService.delete_file(enrollment_file)
-    
+
     return {"message": "文件已删除"}
 
 
@@ -1035,4 +1067,3 @@ router.add_router("/questions", question_router)
 
 # 挂载报名模块路由
 router.add_router("/", enrollment_router)
-

@@ -8,6 +8,7 @@ from ninja.errors import HttpError
 
 from api.auth_utils import api_response, auth_bearer
 from api.models import Question, User
+from api.models import Question, User, Enrollment, EnrollmentFile
 from api.schemas import (
     ApiResponseSchema,
     ChangePasswordInput,
@@ -511,6 +512,354 @@ def upload_question_file(
     }
 
 
+# ==================== 报名模块路由 ====================
+
+# 创建报名模块路由
+enrollment_router = Router(tags=["报名相关"])
+
+# ==================== 报名接口 ====================
+
+@enrollment_router.post(
+    "/enrollments",
+    response={201: EnrollmentSchema},
+    summary="提交报名表单",
+)
+def create_enrollment(
+    request: HttpRequest,
+    data: EnrollmentCreateSchema,
+) -> EnrollmentSchema:
+    """提交新的培训课程报名申请."""
+    user = get_current_user(request)
+    
+    enrollment = EnrollmentService.create_enrollment(
+        user=user,
+        course_name=data.course_name,
+        department=data.department,
+        position=data.position,
+        reason=data.reason,
+    )
+    
+    return 201, enrollment
+
+
+@enrollment_router.get(
+    "/enrollments",
+    response={200: EnrollmentListSchema},
+    summary="查看报名状态",
+)
+def list_enrollments(
+    request: HttpRequest,
+    page: int = 1,
+    per_page: int = 20,
+    status: Optional[str] = None,
+) -> EnrollmentListSchema:
+    """获取当前用户的报名记录列表（分页）."""
+    user = get_current_user(request)
+    
+    enrollments, total = EnrollmentService.get_enrollment_list(
+        user=user,
+        status=status,
+        page=page,
+        per_page=per_page,
+    )
+    
+    last_page = (total + per_page - 1) // per_page
+    
+    return {
+        "data": list(enrollments),
+        "pagination": {
+            "total": total,
+            "current_page": page,
+            "per_page": per_page,
+            "last_page": max(1, last_page),
+        },
+    }
+
+
+@enrollment_router.get(
+    "/enrollments/{enrollment_id}",
+    response={200: EnrollmentSchema},
+    summary="查看报名详情",
+)
+def get_enrollment(
+    request: HttpRequest,
+    enrollment_id: int,
+) -> EnrollmentSchema:
+    """获取指定报名记录的详细信息."""
+    user = get_current_user(request)
+    enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
+    
+    if not enrollment:
+        raise HttpError(404, "报名记录不存在")
+    
+    # 检查权限
+    if enrollment.user_id != user.id:
+        raise HttpError(403, "无权查看此报名记录")
+    
+    return enrollment
+
+
+@enrollment_router.put(
+    "/enrollments/{enrollment_id}/cancel",
+    response={200: MessageSchema},
+    summary="取消报名",
+)
+def cancel_enrollment(
+    request: HttpRequest,
+    enrollment_id: int,
+) -> MessageSchema:
+    """取消指定的报名记录."""
+    user = get_current_user(request)
+    enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
+    
+    if not enrollment:
+        raise HttpError(404, "报名记录不存在")
+    
+    # 检查权限
+    if enrollment.user_id != user.id:
+        raise HttpError(403, "无权操作此报名记录")
+    
+    # 已通过的报名不能取消
+    if enrollment.status == Enrollment.STATUS_APPROVED:
+        raise HttpError(400, "已通过的报名不能取消")
+    
+    EnrollmentService.cancel_enrollment(enrollment)
+    
+    return {"message": "报名已取消"}
+
+
+# ==================== 草稿接口 ====================
+
+@enrollment_router.post(
+    "/drafts",
+    response={201: DraftSchema},
+    summary="保存表单草稿",
+)
+def create_draft(
+    request: HttpRequest,
+    data: DraftCreateSchema,
+) -> DraftSchema:
+    """保存未完成的报名表单草稿."""
+    user = get_current_user(request)
+    
+    draft = EnrollmentDraftService.create_draft(
+        user=user,
+        course_name=data.course_name or "",
+        department=data.department or "",
+        position=data.position or "",
+        reason=data.reason or "",
+        draft_data=data.draft_data,
+    )
+    
+    return 201, draft
+
+
+@enrollment_router.get(
+    "/drafts",
+    response={200: DraftListSchema},
+    summary="获取草稿列表",
+)
+def list_drafts(
+    request: HttpRequest,
+    page: int = 1,
+    per_page: int = 20,
+) -> DraftListSchema:
+    """获取当前用户的草稿列表（分页）."""
+    user = get_current_user(request)
+    
+    drafts, total = EnrollmentDraftService.get_draft_list(
+        user=user,
+        page=page,
+        per_page=per_page,
+    )
+    
+    last_page = (total + per_page - 1) // per_page
+    
+    return {
+        "data": list(drafts),
+        "pagination": {
+            "total": total,
+            "current_page": page,
+            "per_page": per_page,
+            "last_page": max(1, last_page),
+        },
+    }
+
+
+@enrollment_router.get(
+    "/drafts/{draft_id}",
+    response={200: DraftSchema},
+    summary="获取表单草稿",
+)
+def get_draft(
+    request: HttpRequest,
+    draft_id: int,
+) -> DraftSchema:
+    """获取指定草稿的详细信息（加载表单草稿）."""
+    user = get_current_user(request)
+    draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
+    
+    if not draft:
+        raise HttpError(404, "草稿不存在")
+    
+    return draft
+
+
+@enrollment_router.put(
+    "/drafts/{draft_id}",
+    response={200: DraftSchema},
+    summary="更新草稿",
+)
+def update_draft(
+    request: HttpRequest,
+    draft_id: int,
+    data: DraftUpdateSchema,
+) -> DraftSchema:
+    """更新指定草稿的内容."""
+    user = get_current_user(request)
+    draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
+    
+    if not draft:
+        raise HttpError(404, "草稿不存在")
+    
+    updated = EnrollmentDraftService.update_draft(
+        draft=draft,
+        course_name=data.course_name,
+        department=data.department,
+        position=data.position,
+        reason=data.reason,
+        draft_data=data.draft_data,
+    )
+    
+    return updated
+
+
+@enrollment_router.delete(
+    "/drafts/{draft_id}",
+    response={200: MessageSchema},
+    summary="删除草稿",
+)
+def delete_draft(
+    request: HttpRequest,
+    draft_id: int,
+) -> MessageSchema:
+    """删除指定的草稿."""
+    user = get_current_user(request)
+    draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
+    
+    if not draft:
+        raise HttpError(404, "草稿不存在")
+    
+    EnrollmentDraftService.delete_draft(draft)
+    
+    return {"message": "草稿已删除"}
+
+
+@enrollment_router.delete(
+    "/drafts",
+    response={200: MessageSchema},
+    summary="清空所有草稿",
+)
+def clear_all_drafts(
+    request: HttpRequest,
+) -> MessageSchema:
+    """清空当前用户的所有草稿."""
+    user = get_current_user(request)
+    
+    deleted_count = EnrollmentDraftService.clear_all_drafts(user)
+    
+    return {"message": f"已清空 {deleted_count} 个草稿"}
+
+
+# ==================== 文件上传接口 ====================
+
+@enrollment_router.post(
+    "/files",
+    response={201: FileUploadResponseSchema},
+    summary="文件上传",
+)
+def upload_enrollment_file(
+    request: HttpRequest,
+    file: UploadedFile = File(...),
+    enrollment_id: Optional[int] = None,
+    draft_id: Optional[int] = None,
+) -> FileUploadResponseSchema:
+    """上传报名相关文件."""
+    user = get_current_user(request)
+    
+    # 验证参数（必须指定 enrollment_id 或 draft_id）
+    if not enrollment_id and not draft_id:
+        raise HttpError(400, "必须指定 enrollment_id 或 draft_id")
+    
+    # 获取关联对象
+    enrollment = None
+    draft = None
+    
+    if enrollment_id:
+        enrollment = EnrollmentService.get_enrollment_detail(enrollment_id)
+        if not enrollment or enrollment.user_id != user.id:
+            raise HttpError(404, "报名记录不存在或无权限")
+    
+    if draft_id:
+        draft = EnrollmentDraftService.get_draft_detail(draft_id, user)
+        if not draft:
+            raise HttpError(404, "草稿不存在")
+    
+    # 验证文件类型
+    allowed_types = [
+        "image/jpeg", "image/png", "image/gif",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    
+    if file.content_type not in allowed_types:
+        raise HttpError(400, "不支持的文件类型")
+    
+    # 验证文件大小 (10MB)
+    max_size = 10 * 1024 * 1024
+    if file.size > max_size:
+        raise HttpError(400, "文件大小超过10MB限制")
+    
+    uploaded_file = EnrollmentFileService.upload_file(
+        file=file,
+        enrollment=enrollment,
+        draft=draft,
+    )
+    
+    return uploaded_file
+
+
+@enrollment_router.delete(
+    "/files/{file_id}",
+    response={200: MessageSchema},
+    summary="删除文件",
+)
+def delete_enrollment_file(
+    request: HttpRequest,
+    file_id: int,
+) -> MessageSchema:
+    """删除指定的文件."""
+    user = get_current_user(request)
+    
+    try:
+        enrollment_file = EnrollmentFile.objects.get(id=file_id)
+    except EnrollmentFile.DoesNotExist:
+        raise HttpError(404, "文件不存在")
+    
+    # 检查权限
+    if enrollment_file.enrollment:
+        if enrollment_file.enrollment.user_id != user.id:
+            raise HttpError(403, "无权删除此文件")
+    elif enrollment_file.draft:
+        if enrollment_file.draft.user_id != user.id:
+            raise HttpError(403, "无权删除此文件")
+    
+    EnrollmentFileService.delete_file(enrollment_file)
+    
+    return {"message": "文件已删除"}
+
+
 # ==================== 主路由 ====================
 
 # 创建主路由
@@ -683,4 +1032,7 @@ router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 # 挂载问题管理路由
 router.add_router("/questions", question_router)
+
+# 挂载报名模块路由
+router.add_router("/", enrollment_router)
 

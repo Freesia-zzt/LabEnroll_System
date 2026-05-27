@@ -5,70 +5,177 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='Question',
+            name="Question",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=200, verbose_name='问题标题')),
-                ('content', models.TextField(verbose_name='问题内容')),
-                ('category', models.CharField(choices=[('technical', '技术问题'), ('environment', '环境问题'), ('process', '流程问题'), ('other', '其他')], default='other', max_length=20, verbose_name='问题分类')),
-                ('status', models.CharField(choices=[('pending', '未回复'), ('replied', '已回复'), ('resolved', '已解决')], default='pending', max_length=20, verbose_name='问题状态')),
-                ('attachments', models.JSONField(blank=True, default=list, verbose_name='附件列表')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("title", models.CharField(max_length=200, verbose_name="问题标题")),
+                ("content", models.TextField(verbose_name="问题内容")),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("technical", "技术问题"),
+                            ("environment", "环境问题"),
+                            ("process", "流程问题"),
+                            ("other", "其他"),
+                        ],
+                        default="other",
+                        max_length=20,
+                        verbose_name="问题分类",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "未回复"),
+                            ("replied", "已回复"),
+                            ("resolved", "已解决"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                        verbose_name="问题状态",
+                    ),
+                ),
+                (
+                    "attachments",
+                    models.JSONField(blank=True, default=list, verbose_name="附件列表"),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="创建时间"),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="更新时间"),
+                ),
             ],
             options={
-                'verbose_name': '问题',
-                'verbose_name_plural': '问题',
-                'ordering': ['-created_at'],
+                "verbose_name": "问题",
+                "verbose_name_plural": "问题",
+                "ordering": ["-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='User',
+            name="User",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=50, verbose_name='姓名')),
-                ('student_id', models.CharField(max_length=20, unique=True, verbose_name='学号')),
-                ('phone', models.CharField(max_length=11, verbose_name='手机号')),
-                ('email', models.EmailField(max_length=254, verbose_name='邮箱')),
-                ('password_hash', models.CharField(max_length=255, verbose_name='密码哈希')),
-                ('avatar', models.URLField(blank=True, verbose_name='头像URL')),
-                ('bio', models.TextField(blank=True, verbose_name='个人简介')),
-                ('status', models.CharField(choices=[('active', '已激活'), ('inactive', '未激活'), ('locked', '已锁定')], default='inactive', max_length=20, verbose_name='账号状态')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=50, verbose_name="姓名")),
+                (
+                    "student_id",
+                    models.CharField(max_length=20, unique=True, verbose_name="学号"),
+                ),
+                ("phone", models.CharField(max_length=11, verbose_name="手机号")),
+                ("email", models.EmailField(max_length=254, verbose_name="邮箱")),
+                (
+                    "password_hash",
+                    models.CharField(max_length=255, verbose_name="密码哈希"),
+                ),
+                ("avatar", models.URLField(blank=True, verbose_name="头像URL")),
+                ("bio", models.TextField(blank=True, verbose_name="个人简介")),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("active", "已激活"),
+                            ("inactive", "未激活"),
+                            ("locked", "已锁定"),
+                        ],
+                        default="inactive",
+                        max_length=20,
+                        verbose_name="账号状态",
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="创建时间"),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="更新时间"),
+                ),
             ],
             options={
-                'verbose_name': '用户',
-                'verbose_name_plural': '用户',
+                "verbose_name": "用户",
+                "verbose_name_plural": "用户",
             },
         ),
         migrations.CreateModel(
-            name='QuestionReply',
+            name="QuestionReply",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('content', models.TextField(verbose_name='回复内容')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('author', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='question_replies', to='api.user', verbose_name='回复者')),
-                ('question', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='replies', to='api.question', verbose_name='所属问题')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("content", models.TextField(verbose_name="回复内容")),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="创建时间"),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="更新时间"),
+                ),
+                (
+                    "author",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="question_replies",
+                        to="api.user",
+                        verbose_name="回复者",
+                    ),
+                ),
+                (
+                    "question",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="replies",
+                        to="api.question",
+                        verbose_name="所属问题",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '问题回复',
-                'verbose_name_plural': '问题回复',
-                'ordering': ['created_at'],
+                "verbose_name": "问题回复",
+                "verbose_name_plural": "问题回复",
+                "ordering": ["created_at"],
             },
         ),
         migrations.AddField(
-            model_name='question',
-            name='author',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='questions', to='api.user', verbose_name='提问者'),
+            model_name="question",
+            name="author",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="questions",
+                to="api.user",
+                verbose_name="提问者",
+            ),
         ),
     ]

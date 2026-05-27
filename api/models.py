@@ -8,11 +8,11 @@ from django.db import models
 
 class User(models.Model):
     """用户模型
-    
+
     存储系统用户的基本信息，包括身份认证、个人资料等数据。
     该模型用于用户登录、注册、个人中心等功能。
     """
-    
+
     name = models.CharField(
         max_length=50,
         verbose_name="姓名",
@@ -81,35 +81,35 @@ class User(models.Model):
 
 class Question(models.Model):
     """问题模型
-    
+
     存储学员提交的问题信息，支持分类管理、状态追踪和附件上传。
     用于学员问题管理功能模块。
     """
-    
+
     # 问题状态枚举
     STATUS_PENDING = "pending"  # 未回复
     STATUS_REPLIED = "replied"  # 已回复
     STATUS_RESOLVED = "resolved"  # 已解决
-    
+
     STATUS_CHOICES = [
         (STATUS_PENDING, "未回复"),
         (STATUS_REPLIED, "已回复"),
         (STATUS_RESOLVED, "已解决"),
     ]
-    
+
     # 问题分类枚举
     CATEGORY_TECH = "technical"  # 技术问题
     CATEGORY_ENV = "environment"  # 环境问题
     CATEGORY_PROCESS = "process"  # 流程问题
     CATEGORY_OTHER = "other"  # 其他
-    
+
     CATEGORY_CHOICES = [
         (CATEGORY_TECH, "技术问题"),
         (CATEGORY_ENV, "环境问题"),
         (CATEGORY_PROCESS, "流程问题"),
         (CATEGORY_OTHER, "其他"),
     ]
-    
+
     # 关联用户
     author = models.ForeignKey(
         User,
@@ -118,7 +118,7 @@ class Question(models.Model):
         verbose_name="提问者",
         help_text="提问用户的外键关联",
     )
-    
+
     # 问题基本信息
     title = models.CharField(
         max_length=200,
@@ -143,7 +143,7 @@ class Question(models.Model):
         verbose_name="问题状态",
         help_text="问题处理状态：未回复/已回复/已解决",
     )
-    
+
     # 附件（以JSON格式存储文件URL列表）
     attachments = models.JSONField(
         default=list,
@@ -151,7 +151,7 @@ class Question(models.Model):
         verbose_name="附件列表",
         help_text="问题相关附件的URL列表，JSON格式存储",
     )
-    
+
     # 时间戳
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -172,11 +172,11 @@ class Question(models.Model):
 
     def __str__(self) -> str:
         return self.title
-    
+
     @property
     def reply_count(self) -> int:
         """获取回复数量
-        
+
         通过关联的回复模型统计该问题的回复总数。
         """
         return self.replies.count()
@@ -184,10 +184,10 @@ class Question(models.Model):
 
 class QuestionReply(models.Model):
     """问题回复模型
-    
+
     存储对问题的回复信息，支持一对一的问题关联和回复者追踪。
     """
-    
+
     # 关联问题
     question = models.ForeignKey(
         Question,
@@ -196,7 +196,7 @@ class QuestionReply(models.Model):
         verbose_name="所属问题",
         help_text="关联的问题外键",
     )
-    
+
     # 回复者
     author = models.ForeignKey(
         User,
@@ -205,13 +205,13 @@ class QuestionReply(models.Model):
         verbose_name="回复者",
         help_text="回复用户的外键关联",
     )
-    
+
     # 回复内容
     content = models.TextField(
         verbose_name="回复内容",
         help_text="回复的详细内容",
     )
-    
+
     # 时间戳
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -236,25 +236,26 @@ class QuestionReply(models.Model):
 
 # ==================== 报名相关模型 ====================
 
+
 class Enrollment(models.Model):
     """报名表单模型
-    
+
     存储用户提交的报名信息，包括课程名称、部门、职位、报名理由等。
     支持审核状态管理：待审核、已通过、已拒绝、已取消。
     """
-    
-    STATUS_PENDING = "pending"      # 待审核
-    STATUS_APPROVED = "approved"    # 已通过
-    STATUS_REJECTED = "rejected"    # 已拒绝
+
+    STATUS_PENDING = "pending"  # 待审核
+    STATUS_APPROVED = "approved"  # 已通过
+    STATUS_REJECTED = "rejected"  # 已拒绝
     STATUS_CANCELLED = "cancelled"  # 已取消
-    
+
     STATUS_CHOICES = [
         (STATUS_PENDING, "待审核"),
         (STATUS_APPROVED, "已通过"),
         (STATUS_REJECTED, "已拒绝"),
         (STATUS_CANCELLED, "已取消"),
     ]
-    
+
     # 关联用户
     user = models.ForeignKey(
         User,
@@ -263,7 +264,7 @@ class Enrollment(models.Model):
         verbose_name="报名人",
         help_text="报名用户的外键关联",
     )
-    
+
     # 报名信息
     course_name = models.CharField(
         max_length=200,
@@ -291,7 +292,7 @@ class Enrollment(models.Model):
         verbose_name="报名状态",
         help_text="报名状态：待审核/已通过/已拒绝/已取消",
     )
-    
+
     # 时间戳
     submitted_at = models.DateTimeField(
         auto_now_add=True,
@@ -303,24 +304,24 @@ class Enrollment(models.Model):
         verbose_name="更新时间",
         help_text="报名最后更新时间，自动更新",
     )
-    
+
     class Meta:
         verbose_name = "报名记录"
         verbose_name_plural = "报名记录"
         db_table = "enrollments"  # 数据库表名
         ordering = ["-submitted_at"]
-    
+
     def __str__(self) -> str:
         return f"{self.user.name} - {self.course_name}"
 
 
 class EnrollmentDraft(models.Model):
     """报名草稿模型
-    
+
     存储用户未完成的报名表单草稿，支持保存、编辑、删除操作。
     用户可以在提交前保存草稿，稍后继续填写。
     """
-    
+
     # 关联用户
     user = models.ForeignKey(
         User,
@@ -329,7 +330,7 @@ class EnrollmentDraft(models.Model):
         verbose_name="用户",
         help_text="草稿所属用户的外键关联",
     )
-    
+
     # 草稿信息
     course_name = models.CharField(
         max_length=200,
@@ -359,7 +360,7 @@ class EnrollmentDraft(models.Model):
         verbose_name="草稿数据",
         help_text="额外的草稿数据，JSON格式存储",
     )
-    
+
     # 时间戳
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -371,24 +372,24 @@ class EnrollmentDraft(models.Model):
         verbose_name="更新时间",
         help_text="草稿最后更新时间，自动更新",
     )
-    
+
     class Meta:
         verbose_name = "报名草稿"
         verbose_name_plural = "报名草稿"
         db_table = "enrollment_drafts"  # 数据库表名
         ordering = ["-updated_at"]
-    
+
     def __str__(self) -> str:
         return f"草稿-{self.user.name}-{self.course_name[:20]}"
 
 
 class EnrollmentFile(models.Model):
     """报名文件模型
-    
+
     存储报名相关的附件文件，支持关联到报名记录或草稿。
     文件实际存储在文件系统中，本模型记录文件的元数据信息。
     """
-    
+
     # 关联报名或草稿（二选一）
     enrollment = models.ForeignKey(
         Enrollment,
@@ -408,7 +409,7 @@ class EnrollmentFile(models.Model):
         verbose_name="草稿",
         help_text="关联的草稿，与enrollment二选一",
     )
-    
+
     # 文件信息
     file_name = models.CharField(
         max_length=255,
@@ -424,18 +425,18 @@ class EnrollmentFile(models.Model):
         verbose_name="文件大小(字节)",
         help_text="文件大小，单位为字节",
     )
-    
+
     # 时间戳
     uploaded_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="上传时间",
         help_text="文件上传时间，自动生成",
     )
-    
+
     class Meta:
         verbose_name = "报名文件"
         verbose_name_plural = "报名文件"
         db_table = "enrollment_files"  # 数据库表名
-    
+
     def __str__(self) -> str:
         return self.file_name

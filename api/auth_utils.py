@@ -1,8 +1,8 @@
 """JWT 认证工具模块."""
 
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import timedelta
+from typing import Any
 
 import jwt
 from django.conf import settings
@@ -41,11 +41,11 @@ def create_access_token(user: LabUser, remember_me: bool = False) -> str:
         "account": user.account,
         "token_type": "access",
         "jti": f"acc_{user.id}_{int(now.timestamp())}",
-        "iat": now,
-        "exp": now + timedelta(hours=expire_hours),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(hours=expire_hours)).timestamp()),
     }
     token = jwt.encode(
-        {k: v.isoformat() if isinstance(v, datetime) else v for k, v in payload.items()},
+        payload,
         settings.JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
@@ -66,18 +66,18 @@ def create_refresh_token(user: LabUser) -> str:
         "user_id": user.id,
         "token_type": "refresh",
         "jti": f"ref_{user.id}_{int(now.timestamp())}",
-        "iat": now,
-        "exp": now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)).timestamp()),
     }
     token = jwt.encode(
-        {k: v.isoformat() if isinstance(v, datetime) else v for k, v in payload.items()},
+        payload,
         settings.JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
     return token
 
 
-def decode_token(token: str) -> Optional[dict]:
+def decode_token(token: str) -> dict | None:
     """解码并验证 JWT Token.
 
     Args:
@@ -116,7 +116,7 @@ def is_token_blacklisted(jti: str) -> bool:
 class AuthBearer(HttpBearer):
     """JWT Bearer 认证类（django-ninja 认证后端）."""
 
-    def authenticate(self, request: Any, token: str) -> Optional[LabUser]:
+    def authenticate(self, request: Any, token: str) -> LabUser | None:
         """验证 Bearer Token.
 
         Args:

@@ -1,7 +1,7 @@
 """API Schema 定义."""
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from ninja import Schema
 
@@ -72,11 +72,11 @@ class RefreshTokenData(Schema):
 
 class UpdateInfoInput(Schema):
     """修改个人资料请求."""
-    username: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    old_password: Optional[str] = None
-    new_password: Optional[str] = None
+    username: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    old_password: str | None = None
+    new_password: str | None = None
 
 
 class ChangePasswordInput(Schema):
@@ -103,17 +103,17 @@ class ForgotPasswordResetInput(Schema):
 
 class UserInfoSchema(Schema):
     """用户完整信息（不含敏感字段）."""
-    model_config = dict(from_attributes=True)
+    model_config = {"from_attributes": True}
 
     id: int
     account: str
     username: str
-    phone: Optional[str] = None
-    email: Optional[str] = None
+    phone: str | None = None
+    email: str | None = None
     role: int
     is_active: int
-    department_id: Optional[int] = None
-    last_login_at: Optional[datetime] = None
+    department_id: int | None = None
+    last_login_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -161,9 +161,7 @@ class QuestionCreateSchema(Schema):
     title: str
     content: str
     category: str = "other"
-    attachments: List[str] = []
-    category: str = "other"  # 默认其他分类
-    attachments: list[str] = []  # 附件URL列表
+    attachments: list[str] = []
 
 
 class QuestionUpdateSchema(Schema):
@@ -180,12 +178,9 @@ class QuestionFilterSchema(Schema):
 
     page: int = 1
     per_page: int = 10
-    category: Optional[str] = None
-    status: Optional[str] = None
-    search: Optional[str] = None
-    category: str | None = None  # 按分类筛选
-    status: str | None = None  # 按状态筛选
-    search: str | None = None  # 搜索关键词
+    category: str | None = None
+    status: str | None = None
+    search: str | None = None
 
 
 class QuestionBriefSchema(Schema):
@@ -199,7 +194,6 @@ class QuestionBriefSchema(Schema):
     category_display: str
     status: str
     status_display: str
-    status_display: str  # 状态的中文显示
     reply_count: int
     created_at: datetime
     author: UserBriefSchema
@@ -235,7 +229,6 @@ class QuestionDetailSchema(Schema):
 class QuestionStatusUpdateSchema(Schema):
     """更新问题状态请求."""
     status: str
-    status: str  # pending, replied, resolved
 
 
 # ==================== 报名相关 Schema ====================

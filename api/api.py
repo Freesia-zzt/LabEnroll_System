@@ -5,25 +5,21 @@ from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
 from api.auth_utils import api_response, auth_bearer
-from api.models import Question, User
-from api.models import Question, User, Enrollment, EnrollmentFile
+from api.models import Enrollment, EnrollmentFile, Question, User
 from api.schemas import (
     ApiResponseSchema,
     ChangePasswordInput,
-    ForgotPasswordResetInput,
-    ForgotPasswordSendCodeInput,
-    LoginInput,
-from api.models import Enrollment, EnrollmentFile, Question, User
-from api.schemas import (
     DraftCreateSchema,
     DraftListSchema,
     DraftSchema,
     DraftUpdateSchema,
-    # 报名相关 Schema
     EnrollmentCreateSchema,
     EnrollmentListSchema,
     EnrollmentSchema,
     FileUploadResponseSchema,
+    ForgotPasswordResetInput,
+    ForgotPasswordSendCodeInput,
+    LoginInput,
     MessageSchema,
     QuestionBriefSchema,
     QuestionCreateSchema,
@@ -40,14 +36,13 @@ from api.schemas import (
     VerifyActivationCodeInput,
 )
 from api.services import (
+    AuthService,
     EnrollmentDraftService,
     EnrollmentFileService,
     EnrollmentService,
     QuestionReplyService,
     QuestionService,
 )
-from api.services import AuthService, QuestionReplyService, QuestionService
-
 
 # ==================== 认证路由（需 JWT 认证）====================
 
@@ -897,173 +892,7 @@ def delete_enrollment_file(
 # 创建主路由
 router = Router(tags=["API"])
 
-# 注册认证模块路由
 router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
-
-# 注册问题模块路由
 router.add_router("/questions", question_router)
-
-
-@question_router.get(
-    "/{question_id}",
-    response={200: QuestionDetailSchema},
-    summary="获取问题详情",
-)
-def get_question(
-    request: HttpRequest,
-    question_id: int,
-) -> QuestionDetailSchema:
-    """获取单个问题详情，包含回复列表."""
-    question = QuestionService.get_question_detail(question_id)
-    
-    if not question:
-        raise HttpError(404, "问题不存在")
-    
-    return question
-
-
-@question_router.put(
-    "/{question_id}",
-    response={200: QuestionBriefSchema},
-    summary="修改问题",
-)
-def update_question(
-    request: HttpRequest,
-    question_id: int,
-    data: QuestionUpdateSchema,
-) -> QuestionBriefSchema:
-    """修改问题内容.
-    
-    仅问题发布者可修改
-    """
-    user = get_current_user(request)
-    question = QuestionService.get_question_detail(question_id)
-    
-    if not question:
-        raise HttpError(404, "问题不存在")
-    
-    # 检查权限
-    if question.author_id != user.id:
-        raise HttpError(403, "无权修改此问题")
-    
-    # 已解决的问题不能修改
-    if question.status == Question.STATUS_RESOLVED:
-        raise HttpError(400, "已解决的问题不能修改")
-    
-    updated = QuestionService.update_question(
-        question=question,
-        title=data.title,
-        content=data.content,
-        category=data.category,
-        attachments=data.attachments,
-    )
-    
-    return updated
-
-
-@question_router.delete(
-    "/{question_id}",
-    response={200: MessageSchema},
-    summary="删除问题",
-)
-def delete_question(
-    request: HttpRequest,
-    question_id: int,
-) -> MessageSchema:
-    """删除问题.
-    
-    仅问题发布者可删除
-    """
-    user = get_current_user(request)
-    question = QuestionService.get_question_detail(question_id)
-    
-    if not question:
-        raise HttpError(404, "问题不存在")
-    
-    # 检查权限
-    if question.author_id != user.id:
-        raise HttpError(403, "无权删除此问题")
-    
-    QuestionService.delete_question(question)
-    
-    return {"message": "删除成功"}
-
-
-@question_router.put(
-    "/{question_id}/status",
-    response={200: QuestionBriefSchema},
-    summary="更新问题状态",
-)
-def update_question_status(
-    request: HttpRequest,
-    question_id: int,
-    data: QuestionStatusUpdateSchema,
-) -> QuestionBriefSchema:
-    """更新问题状态（标记已解决等）.
-    
-    仅问题发布者可操作
-    """
-    user = get_current_user(request)
-    question = QuestionService.get_question_detail(question_id)
-    
-    if not question:
-        raise HttpError(404, "问题不存在")
-    
-    # 检查权限
-    if question.author_id != user.id:
-        raise HttpError(403, "无权操作此问题")
-    
-    # 验证状态值
-    valid_statuses = [s[0] for s in Question.STATUS_CHOICES]
-    if data.status not in valid_statuses:
-        raise HttpError(400, f"无效的状态，可选: {valid_statuses}")
-    
-    updated = QuestionService.update_question_status(question, data.status)
-    return updated
-
-
-# ==================== 问题回复接口 ====================
-
-@question_router.post(
-    "/{question_id}/replies",
-    response={201: QuestionReplySchema},
-    summary="回复问题",
-)
-def create_reply(
-    request: HttpRequest,
-    question_id: int,
-    data: QuestionReplyCreateSchema,
-) -> QuestionReplySchema:
-    """对问题发表回复."""
-    user = get_current_user(request)
-    question = QuestionService.get_question_detail(question_id)
-    
-    if not question:
-        raise HttpError(404, "问题不存在")
-    
-    reply = QuestionReplyService.create_reply(
-        question=question,
-        author=user,
-        content=data.content,
-    )
-    
-    return 201, reply
-
-
-# ==================== 主路由 ====================
-
-# 创建主路由
-router = Router(tags=["API"])
-
-# 注册认证模块路由
-router.add_router("/user", auth_router)
-router.add_router("/forgot-password", forgot_password_router)
-
-# 注册问题模块路由
-router.add_router("/questions", question_router)
-# 挂载问题管理路由
-router.add_router("/questions", question_router)
-
-# 挂载报名模块路由
 router.add_router("/", enrollment_router)

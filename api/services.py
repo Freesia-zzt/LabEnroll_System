@@ -3,7 +3,6 @@
 import logging
 import random
 from datetime import datetime, timedelta
-from typing import Any, Optional
 
 from django.conf import settings
 from django.db.models import Q, QuerySet
@@ -16,7 +15,17 @@ from api.auth_utils import (
     decode_token,
     is_token_blacklisted,
 )
-from api.models import LabUser, Question, QuestionReply, TokenBlacklist, User
+from api.email_utils import send_activation_code_email, send_forgot_password_code_email
+from api.models import (
+    Enrollment,
+    EnrollmentDraft,
+    EnrollmentFile,
+    LabUser,
+    Question,
+    QuestionReply,
+    TokenBlacklist,
+    User,
+)
 
 logger = logging.getLogger("api.services")
 
@@ -30,7 +39,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(account=account)
         except LabUser.DoesNotExist:
-            raise HttpError(401, "账号或密码错误")
+            raise HttpError(401, "账号或密码错误") from None
 
         if not user.check_password(password):
             raise HttpError(401, "账号或密码错误")
@@ -59,7 +68,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(account=account)
         except LabUser.DoesNotExist:
-            raise HttpError(404, "用户不存在")
+            raise HttpError(404, "用户不存在") from None
 
         if user.is_active == 1:
             raise HttpError(400, "账号已激活，无需重复激活")
@@ -74,9 +83,19 @@ class AuthService:
         user.activation_expire = timezone.now() + timedelta(minutes=30)
         user.save(update_fields=["activation_code", "activation_expire"])
 
-        logger.info(f"[激活码] 用户 {user.account}({user.username}) 的激活码: {code}")
         if user.email:
-            logger.info(f"[邮件] 发送激活码 {code} 到 {user.email}")
+            success = send_activation_code_email(
+                to_email=user.email,
+                code=code,
+                username=user.username,
+            )
+            if success:
+                logger.info(f"[激活码] 已发送激活码到 {user.email}（用户: {user.account}）")
+            else:
+                logger.warning(f"[激活码] 邮件发送失败，激活码: {code}（用户: {user.account}）")
+                logger.info(f"[激活码] 用户 {user.account}({user.username}) 的激活码: {code}")
+        else:
+            logger.info(f"[激活码] 用户 {user.account} 未设置邮箱，激活码: {code}")
 
     @staticmethod
     def verify_activation_code(account: str, activation_code: str) -> None:
@@ -84,7 +103,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(account=account)
         except LabUser.DoesNotExist:
-            raise HttpError(404, "用户不存在")
+            raise HttpError(404, "用户不存在") from None
 
         if user.is_active == 1:
             raise HttpError(400, "账号已激活")
@@ -151,11 +170,11 @@ class AuthService:
     @staticmethod
     def update_info(
         user: LabUser,
-        username: Optional[str] = None,
-        phone: Optional[str] = None,
-        email: Optional[str] = None,
-        old_password: Optional[str] = None,
-        new_password: Optional[str] = None,
+        username: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        old_password: str | None = None,
+        new_password: str | None = None,
     ) -> None:
         """修改个人资料."""
         if username is not None:
@@ -197,7 +216,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(account=account)
         except LabUser.DoesNotExist:
-            raise HttpError(404, "用户不存在")
+            raise HttpError(404, "用户不存在") from None
 
         if user.email != email:
             raise HttpError(400, "账号与邮箱不匹配")
@@ -207,8 +226,16 @@ class AuthService:
         user.activation_expire = timezone.now() + timedelta(minutes=10)
         user.save(update_fields=["activation_code", "activation_expire"])
 
-        logger.info(f"[找回密码] 用户 {user.account} 的验证码: {code}")
-        logger.info(f"[邮件] 发送找回密码验证码 {code} 到 {email}")
+        success = send_forgot_password_code_email(
+            to_email=email,
+            code=code,
+            username=user.username,
+        )
+        if success:
+            logger.info(f"[找回密码] 已发送验证码到 {email}（用户: {user.account}）")
+        else:
+            logger.warning(f"[找回密码] 邮件发送失败，验证码: {code}（用户: {user.account}）")
+            logger.info(f"[找回密码] 用户 {user.account} 的验证码: {code}")
 
     @staticmethod
     def forgot_password_reset(
@@ -225,7 +252,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(account=account, email=email)
         except LabUser.DoesNotExist:
-            raise HttpError(404, "用户不存在")
+            raise HttpError(404, "用户不存在") from None
 
         if user.activation_code != code:
             raise HttpError(400, "验证码错误")
@@ -256,7 +283,7 @@ class AuthService:
         try:
             user = LabUser.objects.get(id=payload["user_id"])
         except LabUser.DoesNotExist:
-            raise HttpError(401, "用户不存在")
+            raise HttpError(401, "用户不存在") from None
 
         if user.is_active != 1:
             raise HttpError(403, "账号未激活")
@@ -275,16 +302,6 @@ class AuthService:
             "token": new_token,
             "refresh_token": new_refresh_token,
         }
-from api.models import (
-    Enrollment,
-    EnrollmentDraft,
-    EnrollmentFile,
-    Question,
-    QuestionReply,
-    User,
-)
-
-
 class QuestionService:
     """问题服务类."""
 
@@ -296,7 +313,6 @@ class QuestionService:
         category: str,
         attachments: list[str],
     ) -> Question:
-        """创建新问题."""
         """创建新问题.
 
         Args:
@@ -326,15 +342,6 @@ class QuestionService:
         page: int = 1,
         per_page: int = 10,
     ) -> tuple[QuerySet[Question], int]:
-        """获取问题列表."""
-        queryset = Question.objects.all()
-
-        if user:
-            queryset = queryset.filter(author=user)
-        if category:
-            queryset = queryset.filter(category=category)
-        if status and status != "all":
-            queryset = queryset.filter(status=status)
         """获取问题列表.
 
         Args:
@@ -350,19 +357,12 @@ class QuestionService:
         """
         queryset = Question.objects.all()
 
-        # 按用户筛选
         if user:
             queryset = queryset.filter(author=user)
-
-        # 按分类筛选
         if category:
             queryset = queryset.filter(category=category)
-
-        # 按状态筛选
         if status and status != "all":
             queryset = queryset.filter(status=status)
-
-        # 搜索关键词
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) | Q(content__icontains=search)
@@ -370,7 +370,6 @@ class QuestionService:
 
         total = queryset.count()
 
-        # 分页
         start = (page - 1) * per_page
         end = start + per_page
         queryset = queryset[start:end]
@@ -378,8 +377,6 @@ class QuestionService:
         return queryset, total
 
     @staticmethod
-    def get_question_detail(question_id: int) -> Optional[Question]:
-        """获取问题详情."""
     def get_question_detail(question_id: int) -> Question | None:
         """获取问题详情.
 

@@ -1,0 +1,830 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "实验室报名系统 - 认证模块",
+    "description": "基于 Django + django-ninja 的认证模块接口文档，包含登录、注册、激活、密码管理等全部认证功能。\n\n## 🔐 认证方式\n- 需要认证的接口需在请求头中携带 `Authorization: Bearer <access_token>`\n- Access Token 有效期默认 24 小时（记住我 7 天）\n- Refresh Token 有效期 7 天，可用于刷新 Access Token",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "本地开发服务器"
+    }
+  ],
+  "paths": {
+    "/api/user/login": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "用户登录",
+        "description": "使用账号和密码登录，返回 Access Token 和 Refresh Token。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              },
+              "example": {
+                "account": "2024001",
+                "password": "test123456",
+                "remember_me": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseSchema"
+                },
+                "example": {
+                  "code": 200,
+                  "msg": "登录成功",
+                  "data": {
+                    "user_id": 1,
+                    "account": "2024001",
+                    "username": "张三",
+                    "role": 1,
+                    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号或密码错误",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "账号或密码错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账号未激活",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "账号未激活，请先激活"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/send-activation-code": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "发送激活码",
+        "description": "向用户的注册邮箱发送 6 位数字激活码，用于激活账号。\n\n**开发阶段**：激活码会同时打印到服务器日志中。\n\n**限制**：每 30 秒可发送一次。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendActivationCodeInput"
+              },
+              "example": {
+                "account": "newuser001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "激活码发送成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "激活码已发送，请查看邮箱（或服务器日志）",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "账号已激活",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "账号已激活，无需重复激活"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "用户不存在",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "用户不存在"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "发送太频繁",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "发送太频繁，请1分钟后再试"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/verify-activation-code": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "验证激活码",
+        "description": "使用收到的 6 位激活码验证并激活账号。激活码有效期为 30 分钟。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyActivationCodeInput"
+              },
+              "example": {
+                "account": "newuser001",
+                "activation_code": "203140"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "激活成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "激活成功，请登录",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "激活码错误或过期",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "wrong_code": {
+                    "value": {
+                      "detail": "激活码错误"
+                    }
+                  },
+                  "expired": {
+                    "value": {
+                      "detail": "激活码已过期，请重新发送"
+                    }
+                  },
+                  "already_activated": {
+                    "value": {
+                      "detail": "账号已激活"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/refresh-token": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "刷新 Access Token",
+        "description": "使用 Refresh Token 获取新的 Access Token 和 Refresh Token 对。旧的 Refresh Token 会被加入黑名单。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenInput"
+              },
+              "example": {
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "刷新成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "Token 刷新成功",
+                  "data": {
+                    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh Token 无效或已被吊销",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "invalid": {
+                    "value": {
+                      "detail": "Refresh Token 无效或已过期"
+                    }
+                  },
+                  "revoked": {
+                    "value": {
+                      "detail": "Refresh Token 已被吊销"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/logout": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "用户登出",
+        "description": "将 Refresh Token 加入黑名单，实现安全登出。需要携带 Bearer Token 进行身份验证。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenInput"
+              },
+              "example": {
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登出成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "登出成功",
+                  "data": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证或 Token 无效",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/me": {
+      "get": {
+        "tags": ["认证管理"],
+        "summary": "获取当前用户信息",
+        "description": "获取当前登录用户的完整信息（不含敏感字段）。需要携带 Bearer Token。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "操作成功",
+                  "data": {
+                    "id": 1,
+                    "account": "2024001",
+                    "username": "张三",
+                    "phone": "13800138000",
+                    "email": "zhangsan@test.com",
+                    "role": 1,
+                    "is_active": 1,
+                    "department_id": 2,
+                    "last_login_at": "2026-05-28T11:37:44.141453+00:00",
+                    "created_at": "2026-05-24T11:05:00.837272+00:00",
+                    "updated_at": "2026-05-28T11:35:55.270407+00:00"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/update-info": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "修改个人资料",
+        "description": "修改当前登录用户的个人资料（用户名、手机号、邮箱），可选同时修改密码（需提供旧密码验证）。\n\n所有字段均为可选，只传需要修改的字段即可。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInfoInput"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "只修改用户名和手机号",
+                  "value": {
+                    "username": "张三新名字",
+                    "phone": "13800138000"
+                  }
+                },
+                "with_password": {
+                  "summary": "同时修改密码",
+                  "value": {
+                    "username": "张三",
+                    "phone": "13800138000",
+                    "old_password": "旧密码",
+                    "new_password": "新密码"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "更新成功",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "旧密码错误",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "旧密码错误"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/change-password": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "修改密码",
+        "description": "修改当前登录用户的密码。需要提供旧密码验证，以及两次新密码确认。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordInput"
+              },
+              "example": {
+                "old_password": "test123456",
+                "new_password": "NewPass123!",
+                "new_password_confirmation": "NewPass123!"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "密码修改成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "密码修改成功",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "验证失败",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "wrong_old": {
+                    "summary": "旧密码错误",
+                    "value": {
+                      "detail": "旧密码错误"
+                    }
+                  },
+                  "not_match": {
+                    "summary": "两次密码不一致",
+                    "value": {
+                      "detail": "两次密码不一致"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/forgot-password/send-code": {
+      "post": {
+        "tags": ["忘记密码"],
+        "summary": "发送重置密码验证码",
+        "description": "验证账号与邮箱匹配后，向邮箱发送 6 位数字验证码。验证码有效期为 10 分钟。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordSendCodeInput"
+              },
+              "example": {
+                "account": "2024001",
+                "email": "1096786713@qq.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "验证码发送成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "验证码已发送，请查看邮箱（或服务器日志）",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "账号与邮箱不匹配",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "账号与邮箱不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "用户不存在",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "用户不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/forgot-password/reset": {
+      "post": {
+        "tags": ["忘记密码"],
+        "summary": "重置密码",
+        "description": "验证码校验通过后重置密码。需要提供账号、邮箱、验证码和新的密码。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordResetInput"
+              },
+              "example": {
+                "account": "2024001",
+                "email": "1096786713@qq.com",
+                "code": "287321",
+                "new_password": "NewPass123!",
+                "new_password_confirmation": "NewPass123!"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "密码重置成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "密码重置成功，请重新登录",
+                  "data": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "验证失败",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "not_match": {
+                    "summary": "两次密码不一致",
+                    "value": {
+                      "detail": "两次密码不一致"
+                    }
+                  },
+                  "wrong_code": {
+                    "summary": "验证码错误",
+                    "value": {
+                      "detail": "验证码错误"
+                    }
+                  },
+                  "expired": {
+                    "summary": "验证码已过期",
+                    "value": {
+                      "detail": "验证码已过期"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "用户不存在",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "用户不存在"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在请求头中传入 Access Token：`Authorization: Bearer <your_token>`"
+      }
+    },
+    "schemas": {
+      "ApiResponseSchema": {
+        "type": "object",
+        "description": "统一 API 响应格式",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务状态码，200 表示成功",
+            "example": 200
+          },
+          "msg": {
+            "type": "string",
+            "description": "操作结果消息",
+            "example": "操作成功"
+          },
+          "data": {
+            "nullable": true,
+            "description": "响应数据，成功时为具体对象，失败时为 null"
+          }
+        }
+      },
+      "LoginInput": {
+        "type": "object",
+        "description": "登录请求",
+        "required": ["account", "password"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "学号/账号",
+            "example": "2024001"
+          },
+          "password": {
+            "type": "string",
+            "description": "登录密码",
+            "example": "test123456"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "description": "记住我（勾选后 Token 有效期延长至 7 天）",
+            "default": false,
+            "example": false
+          }
+        }
+      },
+      "SendActivationCodeInput": {
+        "type": "object",
+        "description": "发送激活码请求",
+        "required": ["account"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "需要激活的账号",
+            "example": "newuser001"
+          }
+        }
+      },
+      "VerifyActivationCodeInput": {
+        "type": "object",
+        "description": "验证激活码请求",
+        "required": ["account", "activation_code"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "需要激活的账号",
+            "example": "newuser001"
+          },
+          "activation_code": {
+            "type": "string",
+            "description": "6 位数字激活码",
+            "minLength": 6,
+            "maxLength": 6,
+            "example": "203140"
+          }
+        }
+      },
+      "RefreshTokenInput": {
+        "type": "object",
+        "description": "刷新 Token / 登出请求",
+        "required": ["refresh_token"],
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "description": "登录时返回的 Refresh Token（JWT 字符串）",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        }
+      },
+      "UpdateInfoInput": {
+        "type": "object",
+        "description": "修改个人资料请求（所有字段均可选，只传需要修改的字段）",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "新的用户名",
+            "nullable": true,
+            "example": "张三新名字"
+          },
+          "phone": {
+            "type": "string",
+            "description": "新的手机号",
+            "nullable": true,
+            "example": "13800138000"
+          },
+          "email": {
+            "type": "string",
+            "description": "新的邮箱地址",
+            "format": "email",
+            "nullable": true,
+            "example": "newemail@qq.com"
+          },
+          "old_password": {
+            "type": "string",
+            "description": "旧密码（如需同时修改密码则必填）",
+            "nullable": true,
+            "example": "test123456"
+          },
+          "new_password": {
+            "type": "string",
+            "description": "新密码（如需同时修改密码则必填）",
+            "nullable": true,
+            "example": "NewPass123!"
+          }
+        }
+      },
+      "ChangePasswordInput": {
+        "type": "object",
+        "description": "修改密码请求",
+        "required": ["old_password", "new_password", "new_password_confirmation"],
+        "properties": {
+          "old_password": {
+            "type": "string",
+            "description": "当前密码",
+            "example": "test123456"
+          },
+          "new_password": {
+            "type": "string",
+            "description": "新密码",
+            "example": "NewPass123!"
+          },
+          "new_password_confirmation": {
+            "type": "string",
+            "description": "确认新密码（必须与 new_password 一致）",
+            "example": "NewPass123!"
+          }
+        }
+      },
+      "ForgotPasswordSendCodeInput": {
+        "type": "object",
+        "description": "忘记密码-发送验证码请求",
+        "required": ["account", "email"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "需要重置密码的账号",
+            "example": "2024001"
+          },
+          "email": {
+            "type": "string",
+            "description": "该账号绑定的邮箱（必须匹配才能发送验证码）",
+            "format": "email",
+            "example": "1096786713@qq.com"
+          }
+        }
+      },
+      "ForgotPasswordResetInput": {
+        "type": "object",
+        "description": "忘记密码-重置密码请求",
+        "required": ["account", "email", "code", "new_password", "new_password_confirmation"],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "需要重置密码的账号",
+            "example": "2024001"
+          },
+          "email": {
+            "type": "string",
+            "description": "该账号绑定的邮箱",
+            "format": "email",
+            "example": "1096786713@qq.com"
+          },
+          "code": {
+            "type": "string",
+            "description": "6 位数字验证码（通过 send-code 接口获取）",
+            "minLength": 6,
+            "maxLength": 6,
+            "example": "287321"
+          },
+          "new_password": {
+            "type": "string",
+            "description": "新密码",
+            "example": "NewPass123!"
+          },
+          "new_password_confirmation": {
+            "type": "string",
+            "description": "确认新密码（必须与 new_password 一致）",
+            "example": "NewPass123!"
+          }
+        }
+      }
+    }
+  }
+}

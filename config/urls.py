@@ -17,16 +17,12 @@ api = NinjaAPI(
                     "scheme": "bearer",
                     "bearerFormat": "JWT",
                 },
-                "apiKeyAuth": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "X-API-Key",
-                },
             }
         }
     },
 )
 
+# 注册 API 路由
 api.add_router("/", api_router)
 
 

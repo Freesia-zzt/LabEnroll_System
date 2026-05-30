@@ -2,7 +2,6 @@
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
-from django.utils import timezone
 
 
 class User(models.Model):
@@ -12,6 +11,7 @@ class User(models.Model):
         managed = False
         verbose_name = "用户"
         verbose_name_plural = "用户"
+        db_table = "users"  # 数据库表名
 
 
 # ==================== 培训模块模型 ====================
@@ -303,11 +303,16 @@ class EnrollmentFile(models.Model):
 # ==================== 学员问题管理模块 ====================
 
 class Question(models.Model):
-    """问题模型."""
+    """问题模型
 
-    STATUS_PENDING = "pending"
-    STATUS_REPLIED = "replied"
-    STATUS_RESOLVED = "resolved"
+    存储学员提交的问题信息，支持分类管理、状态追踪和附件上传。
+    用于学员问题管理功能模块。
+    """
+
+    # 问题状态枚举
+    STATUS_PENDING = "pending"  # 未回复
+    STATUS_REPLIED = "replied"  # 已回复
+    STATUS_RESOLVED = "resolved"  # 已解决
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "未回复"),
@@ -315,10 +320,11 @@ class Question(models.Model):
         (STATUS_RESOLVED, "已解决"),
     ]
 
-    CATEGORY_TECH = "technical"
-    CATEGORY_ENV = "environment"
-    CATEGORY_PROCESS = "process"
-    CATEGORY_OTHER = "other"
+    # 问题分类枚举
+    CATEGORY_TECH = "technical"  # 技术问题
+    CATEGORY_ENV = "environment"  # 环境问题
+    CATEGORY_PROCESS = "process"  # 流程问题
+    CATEGORY_OTHER = "other"  # 其他
 
     CATEGORY_CHOICES = [
         (CATEGORY_TECH, "技术问题"),
@@ -327,77 +333,125 @@ class Question(models.Model):
         (CATEGORY_OTHER, "其他"),
     ]
 
+    # 关联用户
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="questions",
         verbose_name="提问者",
+        help_text="提问用户的外键关联",
     )
 
-    title = models.CharField(max_length=200, verbose_name="问题标题")
-    content = models.TextField(verbose_name="问题内容")
+    # 问题基本信息
+    title = models.CharField(
+        max_length=200,
+        verbose_name="问题标题",
+        help_text="问题的简短标题，便于快速浏览",
+    )
+    content = models.TextField(
+        verbose_name="问题内容",
+        help_text="问题的详细描述",
+    )
     category = models.CharField(
         max_length=20,
         choices=CATEGORY_CHOICES,
         default=CATEGORY_OTHER,
         verbose_name="问题分类",
+        help_text="问题分类：技术问题/环境问题/流程问题/其他",
     )
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default=STATUS_PENDING,
         verbose_name="问题状态",
+        help_text="问题处理状态：未回复/已回复/已解决",
     )
 
+    # 附件（以JSON格式存储文件URL列表）
     attachments = models.JSONField(
         default=list,
         blank=True,
         verbose_name="附件列表",
+        help_text="问题相关附件的URL列表，JSON格式存储",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    # 时间戳
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="创建时间",
+        help_text="问题创建时间，自动生成",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新时间",
+        help_text="问题最后更新时间，自动更新",
+    )
 
     class Meta:
         verbose_name = "问题"
         verbose_name_plural = "问题"
-        ordering = ["-created_at"]
+        db_table = "questions"  # 数据库表名
+        ordering = ["-created_at"]  # 默认按创建时间倒序排列
 
     def __str__(self) -> str:
         return self.title
 
     @property
     def reply_count(self) -> int:
-        """获取回复数量."""
+        """获取回复数量
+
+        通过关联的回复模型统计该问题的回复总数。
+        """
         return self.replies.count()
 
 
 class QuestionReply(models.Model):
-    """问题回复模型."""
+    """问题回复模型
 
+    存储对问题的回复信息，支持一对一的问题关联和回复者追踪。
+    """
+
+    # 关联问题
     question = models.ForeignKey(
         Question,
         on_delete=models.CASCADE,
         related_name="replies",
         verbose_name="所属问题",
+        help_text="关联的问题外键",
     )
 
+    # 回复者
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="question_replies",
         verbose_name="回复者",
+        help_text="回复用户的外键关联",
     )
 
-    content = models.TextField(verbose_name="回复内容")
+    # 回复内容
+    content = models.TextField(
+        verbose_name="回复内容",
+        help_text="回复的详细内容",
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    # 时间戳
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="创建时间",
+        help_text="回复创建时间，自动生成",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新时间",
+        help_text="回复最后更新时间，自动更新",
+    )
 
     class Meta:
         verbose_name = "问题回复"
         verbose_name_plural = "问题回复"
-        ordering = ["created_at"]
+        db_table = "question_replies"  # 数据库表名
+        ordering = ["created_at"]  # 按创建时间正序排列
 
     def __str__(self) -> str:
         return f"回复-{self.question.title[:20]}..."

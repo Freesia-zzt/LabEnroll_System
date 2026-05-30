@@ -25,6 +25,7 @@ ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(",") if h.strip()]
 
 # Application definition
 DJANGO_APPS = [
+    "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
 ]
@@ -156,3 +157,23 @@ X_FRAME_OPTIONS = "DENY"
 
 # Ninja API 配置（django-ninja 支持的配置项）
 NINJA_PAGINATION_PER_PAGE = 20
+
+AUTH_USER_MODEL = "api.LabUser"
+
+# ==================== JWT 认证配置 ====================
+
+JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
+JWT_ALGORITHM = "HS256"
+JWT_ACCESS_TOKEN_EXPIRE_HOURS = 24
+JWT_REFRESH_TOKEN_EXPIRE_DAYS = 7
+JWT_REMEMBER_ME_EXPIRE_DAYS = 7
+
+# ==================== 邮件配置（QQ 邮箱 SMTP）====================
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.qq.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 465))
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "True").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)

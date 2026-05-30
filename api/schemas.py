@@ -1,10 +1,23 @@
 """API Schema 定义."""
 
 from datetime import datetime
+<<<<<<< HEAD
+=======
+from typing import Any, List, Optional
+>>>>>>> master
 
 from ninja import Schema
 
 # ==================== 基础响应 Schema ====================
+
+
+# ==================== 基础响应 Schema ====================
+
+class ApiResponseSchema(Schema):
+    """统一 API 响应格式."""
+    code: int = 200
+    msg: str = "操作成功"
+    data: Any = None
 
 
 class MessageSchema(Schema):
@@ -13,6 +26,7 @@ class MessageSchema(Schema):
     message: str
 
 
+<<<<<<< HEAD
 class PaginationSchema(Schema):
     """分页信息."""
 
@@ -30,6 +44,109 @@ class UserBriefSchema(Schema):
 
     model_config = {"from_attributes": True}
 
+=======
+# ==================== 认证相关 Schema ====================
+
+class RegisterInput(Schema):
+    """注册请求."""
+    account: str
+    password: str
+    password_confirmation: str
+    username: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class LoginInput(Schema):
+    """登录请求."""
+    account: str
+    password: str
+    remember_me: bool = False
+
+
+class LoginData(Schema):
+    """登录响应数据."""
+    user_id: int
+    account: str
+    username: str
+    role: int
+    token: str
+    refresh_token: str
+
+
+class SendActivationCodeInput(Schema):
+    """发送激活码请求."""
+    account: str
+
+
+class VerifyActivationCodeInput(Schema):
+    """验证激活码请求."""
+    account: str
+    activation_code: str
+
+
+class RefreshTokenInput(Schema):
+    """刷新 Token 请求."""
+    refresh_token: str
+
+
+class RefreshTokenData(Schema):
+    """刷新 Token 响应数据."""
+    token: str
+    refresh_token: str
+
+
+class UpdateInfoInput(Schema):
+    """修改个人资料请求."""
+    username: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    old_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
+class ChangePasswordInput(Schema):
+    """修改密码请求."""
+    old_password: str
+    new_password: str
+    new_password_confirmation: str
+
+
+class ForgotPasswordSendCodeInput(Schema):
+    """忘记密码-发送验证码请求."""
+    account: str
+    email: str
+
+
+class ForgotPasswordResetInput(Schema):
+    """忘记密码-重置密码请求."""
+    account: str
+    email: str
+    code: str
+    new_password: str
+    new_password_confirmation: str
+
+
+class UserInfoSchema(Schema):
+    """用户完整信息（不含敏感字段）."""
+    model_config = {"from_attributes": True}
+    id: int
+    account: str
+    username: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    role: int
+    is_active: int
+    department_id: Optional[int] = None
+    last_login_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EnrollmentSchema(Schema):
+    """报名表单 Schema."""
+    model_config = dict(from_attributes=True)
+>>>>>>> master
     id: int
     name: str
     avatar: str | None = None

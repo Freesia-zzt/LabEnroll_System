@@ -740,7 +740,7 @@ class CourseService:
                     'title': course.title,
                     'description': course.description,
                     'cover_image': course.cover_image,
-                    'instructor_name': course.instructor.name if course.instructor else '',
+                    'instructor_name': course.instructor.username if course.instructor else '',
                     'status': course.status,
                     'start_date': course.start_date,
                     'end_date': course.end_date,
@@ -813,7 +813,7 @@ class CourseService:
                 'description': course.description,
                 'cover_image': course.cover_image,
                 'instructor_id': course.instructor.id if course.instructor else None,
-                'instructor_name': course.instructor.name if course.instructor else '',
+                'instructor_name': course.instructor.username if course.instructor else '',
                 'status': course.status,
                 'start_date': course.start_date,
                 'end_date': course.end_date,
@@ -861,7 +861,7 @@ class AssignmentService:
                 'course_id': submission.assignment.course.id,
                 'course_title': submission.assignment.course.title,
                 'user_id': submission.user.id,
-                'user_name': submission.user.name,
+                'user_name': submission.user.username,
                 'submitted_at': submission.submitted_at,
             })
 

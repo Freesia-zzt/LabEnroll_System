@@ -51,6 +51,7 @@ from .schemas import (
     QuestionUpdateSchema,
 )
 from .services import (
+    AuthService,
     EnrollmentService,
     EnrollmentDraftService,
     EnrollmentFileService,

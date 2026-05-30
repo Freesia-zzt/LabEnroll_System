@@ -21,6 +21,16 @@ class MessageSchema(Schema):
 
 # ==================== 认证相关 Schema ====================
 
+class RegisterInput(Schema):
+    """注册请求."""
+    account: str
+    password: str
+    password_confirmation: str
+    username: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
 class LoginInput(Schema):
     """登录请求."""
     account: str

@@ -4,7 +4,18 @@ from typing import Optional, List
 from ninja import Router, File, UploadedFile
 from ninja.errors import HttpError
 
+from .auth_utils import api_response, auth_bearer
 from .schemas import (
+    ApiResponseSchema,
+    ChangePasswordInput,
+    ForgotPasswordSendCodeInput,
+    ForgotPasswordResetInput,
+    LoginInput,
+    MessageSchema,
+    RefreshTokenInput,
+    SendActivationCodeInput,
+    UpdateInfoInput,
+    VerifyActivationCodeInput,
     EnrollmentSchema,
     EnrollmentCreateSchema,
     EnrollmentStatusSchema,
@@ -57,6 +68,162 @@ from .models import CourseEnrollment, Question
 router = Router(tags=["API"])
 enrollment_router = Router(tags=["报名相关"])
 training_router = Router(tags=["培训模块"])
+
+# ==================== 认证路由（需 JWT 认证）====================
+
+auth_router = Router(tags=["认证管理"], auth=auth_bearer)
+
+
+@auth_router.post(
+    "/login",
+    response={200: ApiResponseSchema},
+    summary="用户登录",
+    auth=None,
+)
+def login(request, data: LoginInput) -> dict:
+    """用户登录接口."""
+    result = AuthService.login(
+        account=data.account,
+        password=data.password,
+        remember_me=data.remember_me,
+    )
+    return api_response(code=200, msg="登录成功", data=result)
+
+
+@auth_router.post(
+    "/send-activation-code",
+    response={200: ApiResponseSchema},
+    summary="发送激活码",
+    auth=None,
+)
+def send_activation_code(request, data: SendActivationCodeInput) -> dict:
+    """发送激活码到用户邮箱."""
+    AuthService.send_activation_code(account=data.account)
+    return api_response(msg="激活码已发送，请查看邮箱（或服务器日志）")
+
+
+@auth_router.post(
+    "/verify-activation-code",
+    response={200: ApiResponseSchema},
+    summary="验证激活码",
+    auth=None,
+)
+def verify_activation_code(request, data: VerifyActivationCodeInput) -> dict:
+    """验证激活码以激活账号."""
+    AuthService.verify_activation_code(
+        account=data.account,
+        activation_code=data.activation_code,
+    )
+    return api_response(msg="激活成功，请登录")
+
+
+@auth_router.post(
+    "/logout",
+    response={200: ApiResponseSchema},
+    summary="用户登出",
+)
+def logout(request, data: RefreshTokenInput) -> dict:
+    """用户登出，将 Refresh Token 加入黑名单."""
+    AuthService.logout(refresh_token=data.refresh_token)
+    return api_response(msg="登出成功")
+
+
+@auth_router.get(
+    "/me",
+    response={200: ApiResponseSchema},
+    summary="获取当前用户信息",
+)
+def get_user_info(request) -> dict:
+    """获取当前登录用户的完整信息."""
+    user = request.auth
+    user_info = AuthService.get_user_info(user)
+    return api_response(data=user_info)
+
+
+@auth_router.post(
+    "/update-info",
+    response={200: ApiResponseSchema},
+    summary="修改个人资料",
+)
+def update_info(request, data: UpdateInfoInput) -> dict:
+    """修改个人资料，可选同时修改密码."""
+    user = request.auth
+    AuthService.update_info(
+        user=user,
+        username=data.username,
+        phone=data.phone,
+        email=data.email,
+        old_password=data.old_password,
+        new_password=data.new_password,
+    )
+    return api_response(msg="更新成功")
+
+
+@auth_router.post(
+    "/change-password",
+    response={200: ApiResponseSchema},
+    summary="修改密码",
+)
+def change_password(request, data: ChangePasswordInput) -> dict:
+    """修改密码（需提供旧密码验证）."""
+    user = request.auth
+    AuthService.change_password(
+        user=user,
+        old_password=data.old_password,
+        new_password=data.new_password,
+        new_password_confirmation=data.new_password_confirmation,
+    )
+    return api_response(msg="密码修改成功")
+
+
+@auth_router.post(
+    "/refresh-token",
+    response={200: ApiResponseSchema},
+    summary="刷新 Access Token",
+    auth=None,
+)
+def refresh_token(request, data: RefreshTokenInput) -> dict:
+    """使用 Refresh Token 获取新的 Access Token."""
+    result = AuthService.refresh_token(refresh_token_str=data.refresh_token)
+    return api_response(msg="Token 刷新成功", data=result)
+
+
+# ==================== 忘记密码路由（公开）====================
+
+forgot_password_router = Router(tags=["忘记密码"])
+
+
+@forgot_password_router.post(
+    "/send-code",
+    response={200: ApiResponseSchema},
+    summary="发送重置密码验证码",
+)
+def forgot_password_send_code(request, data: ForgotPasswordSendCodeInput) -> dict:
+    """验证账号邮箱匹配后发送重置密码验证码."""
+    AuthService.forgot_password_send_code(
+        account=data.account,
+        email=data.email,
+    )
+    return api_response(msg="验证码已发送，请查看邮箱（或服务器日志）")
+
+
+@forgot_password_router.post(
+    "/reset",
+    response={200: ApiResponseSchema},
+    summary="重置密码",
+)
+def forgot_password_reset(request, data: ForgotPasswordResetInput) -> dict:
+    """验证码校验通过后重置密码."""
+    AuthService.forgot_password_reset(
+        account=data.account,
+        email=data.email,
+        code=data.code,
+        new_password=data.new_password,
+        new_password_confirmation=data.new_password_confirmation,
+    )
+    return api_response(msg="密码重置成功，请重新登录")
+
+
 question_router = Router(tags=["问题管理"])
 
 # ==================== 报名相关 API ====================
@@ -627,6 +794,8 @@ def upload_question_file(request, file: UploadedFile = File(...)):
 
 
 # 挂载子路由
+router.add_router("/v1/auth", auth_router)
+router.add_router("/v1/forgot-password", forgot_password_router)
 router.add_router("/v1", enrollment_router)
 router.add_router("/v1/training", training_router)
 router.add_router("/v1/questions", question_router)

@@ -1,4 +1,6 @@
 """API 数据模型定义."""
+from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
 
@@ -407,3 +409,100 @@ class QuestionReply(models.Model):
 
     def __str__(self) -> str:
         return f"回复-{self.question.title[:20]}..."
+
+
+# ==================== 认证模块模型 ====================
+
+
+class Department(models.Model):
+    """部门表."""
+
+    name = models.CharField(max_length=100, verbose_name="部门名称")
+    intro = models.TextField(blank=True, null=True, verbose_name="部门介绍")
+    tech_stack = models.CharField(max_length=255, blank=True, null=True, verbose_name="技术栈")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "部门"
+        verbose_name_plural = "部门"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class LabUserManager(BaseUserManager):
+    """LabUser 的自定义管理器."""
+
+    def create_user(self, account: str, password: str = None, **extra_fields):
+        if not account:
+            raise ValueError("账号不能为空")
+        user = self.model(account=account, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, account: str, password: str = None, **extra_fields):
+        extra_fields.setdefault("is_active", 1)
+        extra_fields.setdefault("role", 2)
+        return self.create_user(account, password, **extra_fields)
+
+
+class LabUser(AbstractBaseUser, PermissionsMixin):
+    """用户表 — 自定义用户模型（用于实验室管理系统）."""
+
+    account = models.CharField(max_length=50, unique=True, verbose_name="学号/账号")
+    username = models.CharField(max_length=100, verbose_name="用户名/姓名")
+    phone = models.CharField(max_length=11, blank=True, null=True, verbose_name="手机号")
+    email = models.EmailField(blank=True, null=True, verbose_name="邮箱")
+    is_active = models.IntegerField(default=0, verbose_name="是否激活(0未激活/1已激活)")
+    role = models.IntegerField(default=1, verbose_name="角色(1=学员, 2=管理员)")
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="所属部门",
+    )
+    last_login_at = models.DateTimeField(null=True, blank=True, verbose_name="最后登录时间")
+    activation_code = models.CharField(max_length=6, null=True, blank=True, verbose_name="6位激活码")
+    activation_expire = models.DateTimeField(null=True, blank=True, verbose_name="激活码过期时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    objects = LabUserManager()
+
+    USERNAME_FIELD = "account"
+    REQUIRED_FIELDS = ["username"]
+
+    class Meta:
+        verbose_name = "实验室用户"
+        verbose_name_plural = "实验室用户"
+
+    def __str__(self) -> str:
+        return f"{self.username}({self.account})"
+
+    @property
+    def is_staff(self) -> bool:
+        return self.role == 2
+
+
+class TokenBlacklist(models.Model):
+    """Token 黑名单表（用于登出失效）."""
+
+    jti = models.CharField(max_length=255, unique=True, verbose_name="Token JTI")
+    token_type = models.CharField(max_length=20, verbose_name="Token 类型(access/refresh)")
+    user = models.ForeignKey(
+        LabUser,
+        on_delete=models.CASCADE,
+        verbose_name="所属用户",
+    )
+    expires_at = models.DateTimeField(verbose_name="过期时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "Token黑名单"
+        verbose_name_plural = "Token黑名单"
+
+    def __str__(self) -> str:
+        return f"{self.user.username}-{self.jti[:8]}..."

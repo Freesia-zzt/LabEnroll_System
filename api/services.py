@@ -1,18 +1,298 @@
 """API 业务逻辑层."""
+import logging
+import random
+from datetime import datetime, timedelta
 from typing import List, Optional
-from datetime import datetime
 
 from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count, Avg, Sum, Q
 from django.utils import timezone
 
+from .auth_utils import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    is_token_blacklisted,
+)
+from .email_utils import send_activation_code_email, send_forgot_password_code_email
 from .models import (
+    Department,
     Enrollment, EnrollmentDraft, EnrollmentFile,
     Course, Chapter, Courseware, CourseEnrollment, ChapterProgress,
     Assignment, AssignmentSubmission, TrainingNotification, CourseReview,
     Question, QuestionReply,
+    LabUser,
+    TokenBlacklist,
+    User,
 )
+
+
+class AuthService:
+    """认证服务类."""
+
+    @staticmethod
+    def login(account: str, password: str, remember_me: bool = False) -> dict:
+        """用户登录."""
+        try:
+            user = LabUser.objects.get(account=account)
+        except LabUser.DoesNotExist:
+            raise Exception("账号或密码错误")
+
+        if not user.check_password(password):
+            raise Exception("账号或密码错误")
+
+        if user.is_active != 1:
+            raise Exception("账号未激活，请先激活")
+
+        token = create_access_token(user, remember_me=remember_me)
+        refresh_token = create_refresh_token(user)
+
+        user.last_login_at = timezone.now()
+        user.save(update_fields=["last_login_at"])
+
+        return {
+            "user_id": user.id,
+            "account": user.account,
+            "username": user.username,
+            "role": user.role,
+            "token": token,
+            "refresh_token": refresh_token,
+        }
+
+    @staticmethod
+    def send_activation_code(account: str) -> None:
+        """发送激活码."""
+        try:
+            user = LabUser.objects.get(account=account)
+        except LabUser.DoesNotExist:
+            raise Exception("用户不存在")
+
+        if user.is_active == 1:
+            raise Exception("账号已激活，无需重复激活")
+
+        if user.activation_expire and user.activation_expire > timezone.now():
+            remaining = (user.activation_expire - timezone.now()).total_seconds()
+            if remaining > 29 * 60:
+                raise Exception("发送太频繁，请1分钟后再试")
+
+        code = f"{random.randint(0, 999999):06d}"
+        user.activation_code = code
+        user.activation_expire = timezone.now() + timedelta(minutes=30)
+        user.save(update_fields=["activation_code", "activation_expire"])
+
+        if user.email:
+            success = send_activation_code_email(
+                to_email=user.email,
+                code=code,
+                username=user.username,
+            )
+            if success:
+                pass  # logged in email_utils
+        logger.info(f"[激活码] 用户 {user.account}({user.username}) 的激活码: {code}")
+
+    @staticmethod
+    def verify_activation_code(account: str, activation_code: str) -> None:
+        """验证激活码."""
+        try:
+            user = LabUser.objects.get(account=account)
+        except LabUser.DoesNotExist:
+            raise Exception("用户不存在")
+
+        if user.is_active == 1:
+            raise Exception("账号已激活")
+
+        if user.activation_code != activation_code:
+            raise Exception("激活码错误")
+
+        if not user.activation_expire or user.activation_expire < timezone.now():
+            raise Exception("激活码已过期，请重新发送")
+
+        user.is_active = 1
+        user.activation_code = None
+        user.activation_expire = None
+        user.save(update_fields=["is_active", "activation_code", "activation_expire"])
+
+        logger.info(f"[激活成功] 用户 {user.account}({user.username}) 已激活")
+
+    @staticmethod
+    def logout(refresh_token: str) -> None:
+        """用户登出."""
+        payload = decode_token(refresh_token)
+        if not payload:
+            raise Exception("无效的 Refresh Token")
+
+        if payload.get("token_type") != "refresh":
+            raise Exception("请提供 Refresh Token")
+
+        jti = payload.get("jti", "")
+        if is_token_blacklisted(jti):
+            return
+
+        expires_at = timezone.now() + timedelta(days=7)
+
+        TokenBlacklist.objects.create(
+            jti=jti,
+            token_type="refresh",
+            user_id=payload["user_id"],
+            expires_at=expires_at,
+        )
+
+        logger.info(f"[登出] 用户 {payload.get('user_id')} 已登出")
+
+    @staticmethod
+    def get_user_info(user: LabUser) -> dict:
+        """获取用户完整信息."""
+        return {
+            "id": user.id,
+            "account": user.account,
+            "username": user.username,
+            "phone": user.phone,
+            "email": user.email,
+            "role": user.role,
+            "is_active": user.is_active,
+            "department_id": user.department_id,
+            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat(),
+        }
+
+    @staticmethod
+    def update_info(
+        user: LabUser,
+        username: Optional[str] = None,
+        phone: Optional[str] = None,
+        email: Optional[str] = None,
+        old_password: Optional[str] = None,
+        new_password: Optional[str] = None,
+    ) -> None:
+        """修改个人资料."""
+        if username is not None:
+            user.username = username
+        if phone is not None:
+            user.phone = phone
+        if email is not None:
+            user.email = email
+
+        if old_password and new_password:
+            if not user.check_password(old_password):
+                raise Exception("旧密码错误")
+            user.set_password(new_password)
+
+        user.save()
+        logger.info(f"[更新资料] 用户 {user.account} 已更新个人资料")
+
+    @staticmethod
+    def change_password(
+        user: LabUser,
+        old_password: str,
+        new_password: str,
+        new_password_confirmation: str,
+    ) -> None:
+        """修改密码."""
+        if new_password != new_password_confirmation:
+            raise Exception("两次密码不一致")
+
+        if not user.check_password(old_password):
+            raise Exception("旧密码错误")
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        logger.info(f"[修改密码] 用户 {user.account} 已修改密码")
+
+    @staticmethod
+    def forgot_password_send_code(account: str, email: str) -> None:
+        """忘记密码-发送验证码."""
+        try:
+            user = LabUser.objects.get(account=account)
+        except LabUser.DoesNotExist:
+            raise Exception("用户不存在")
+
+        if user.email != email:
+            raise Exception("账号与邮箱不匹配")
+
+        code = f"{random.randint(0, 999999):06d}"
+        user.activation_code = code
+        user.activation_expire = timezone.now() + timedelta(minutes=10)
+        user.save(update_fields=["activation_code", "activation_expire"])
+
+        success = send_forgot_password_code_email(
+            to_email=email,
+            code=code,
+            username=user.username,
+        )
+        if success:
+            pass  # logged in email_utils
+        logger.info(f"[找回密码] 用户 {user.account} 的验证码: {code}")
+
+    @staticmethod
+    def forgot_password_reset(
+        account: str,
+        email: str,
+        code: str,
+        new_password: str,
+        new_password_confirmation: str,
+    ) -> None:
+        """忘记密码-重置密码."""
+        if new_password != new_password_confirmation:
+            raise Exception("两次密码不一致")
+
+        try:
+            user = LabUser.objects.get(account=account, email=email)
+        except LabUser.DoesNotExist:
+            raise Exception("用户不存在")
+
+        if user.activation_code != code:
+            raise Exception("验证码错误")
+
+        if not user.activation_expire or user.activation_expire < timezone.now():
+            raise Exception("验证码已过期")
+
+        user.set_password(new_password)
+        user.activation_code = None
+        user.activation_expire = None
+        user.save(update_fields=["password", "activation_code", "activation_expire"])
+        logger.info(f"[重置密码] 用户 {user.account} 已重置密码")
+
+    @staticmethod
+    def refresh_token(refresh_token_str: str) -> dict:
+        """刷新 Access Token."""
+        from django.conf import settings
+
+        payload = decode_token(refresh_token_str)
+        if not payload:
+            raise Exception("Refresh Token 无效或已过期")
+
+        if payload.get("token_type") != "refresh":
+            raise Exception("请提供 Refresh Token")
+
+        jti = payload.get("jti", "")
+        if is_token_blacklisted(jti):
+            raise Exception("Refresh Token 已被吊销")
+
+        try:
+            user = LabUser.objects.get(id=payload["user_id"])
+        except LabUser.DoesNotExist:
+            raise Exception("用户不存在")
+
+        if user.is_active != 1:
+            raise Exception("账号未激活")
+
+        new_token = create_access_token(user)
+        new_refresh_token = create_refresh_token(user)
+
+        TokenBlacklist.objects.create(
+            jti=jti,
+            token_type="refresh",
+            user=user,
+            expires_at=timezone.now() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+
+        return {
+            "token": new_token,
+            "refresh_token": new_refresh_token,
+        }
+
 
 
 class EnrollmentService:

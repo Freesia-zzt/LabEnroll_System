@@ -67,7 +67,7 @@ from .models import CourseEnrollment, Question
 
 router = Router(tags=["API"])
 enrollment_router = Router(tags=["报名相关"])
-training_router = Router(tags=["培训模块"])
+training_router = Router(tags=["培训模块"], auth=auth_bearer)
 
 # ==================== 认证路由（需 JWT 认证）====================
 
@@ -250,8 +250,8 @@ def get_enrollment_list(
 
     GET /api/v1/enrollments?page=1&page_size=20
     """
-    user_id = 1  # 实际项目中从认证获取
-    result = EnrollmentService.get_enrollments_by_user(user_id, page, page_size)
+    user = request.auth
+    result = EnrollmentService.get_enrollments_by_user(user.id, page, page_size)
     return result
 
 @enrollment_router.get("/enrollments/{enrollment_id}", response=EnrollmentSchema)
@@ -284,7 +284,7 @@ def save_draft(request, data: EnrollmentDraftCreateSchema):
 
     POST /api/v1/drafts
     """
-    user_id = 1  # 实际项目中从认证获取
+    user = request.auth
     draft = EnrollmentDraftService.create_draft(user_id, data.dict())
     return draft
 
@@ -298,8 +298,8 @@ def get_draft_list(
 
     GET /api/v1/drafts?page=1&page_size=20
     """
-    user_id = 1  # 实际项目中从认证获取
-    result = EnrollmentDraftService.get_drafts_by_user(user_id, page, page_size)
+    user = request.auth
+    result = EnrollmentDraftService.get_drafts_by_user(user.id, page, page_size)
     return result
 
 @enrollment_router.get("/drafts/{draft_id}", response=EnrollmentDraftSchema)
@@ -341,7 +341,7 @@ def clear_all_drafts(request):
 
     DELETE /api/v1/drafts
     """
-    user_id = 1  # 实际项目中从认证获取
+    user = request.auth
     deleted_count = EnrollmentDraftService.clear_all_drafts(user_id)
     return {"message": f"已删除 {deleted_count} 个草稿"}
 
@@ -383,8 +383,8 @@ def get_training_statistics(request):
 
     GET /api/v1/training/statistics
     """
-    user_id = 1  # 实际项目中从认证获取
-    statistics = TrainingStatisticsService.get_user_statistics(user_id)
+    user = request.auth
+    statistics = TrainingStatisticsService.get_user_statistics(user.id)
     return statistics
 
 
@@ -394,8 +394,8 @@ def get_learning_progress(request):
 
     GET /api/v1/training/progress
     """
-    user_id = 1  # 实际项目中从认证获取
-    progress = LearningProgressService.get_user_progress(user_id)
+    user = request.auth
+    progress = LearningProgressService.get_user_progress(user.id)
     return progress
 
 
@@ -409,8 +409,8 @@ def get_pending_assignments(
 
     GET /api/v1/training/assignments/pending
     """
-    instructor_id = 1  # 实际项目中从认证获取
-    result = AssignmentService.get_pending_assignments(instructor_id, page, page_size)
+    user = request.auth
+    result = AssignmentService.get_pending_assignments(user.id, page, page_size)
     return result
 
 
@@ -420,9 +420,12 @@ def get_assignment_review(request, submission_id: int):
 
     GET /api/v1/training/assignments/review/{submission_id}
     """
+    user = request.auth
     submission = AssignmentService.get_assignment_detail(submission_id)
     if not submission:
         raise HttpError(404, "作业提交不存在")
+    if submission.user_id != user.id and user.role != 1:
+        raise HttpError(403, "无权查看此作业")
     return {
         'id': submission.id,
         'assignment_id': submission.assignment.id,
@@ -445,8 +448,8 @@ def get_my_assignment_reviews(request):
 
     GET /api/v1/training/submissions/me
     """
-    user_id = 1  # 实际项目中从认证获取
-    submissions = AssignmentService.get_user_submissions(user_id)
+    user = request.auth
+    submissions = AssignmentService.get_user_submissions(user.id)
     return submissions
 
 
@@ -456,9 +459,12 @@ def get_submission_detail(request, submission_id: int):
 
     GET /api/v1/training/submissions/{submission_id}
     """
+    user = request.auth
     submission = AssignmentService.get_assignment_detail(submission_id)
     if not submission:
         raise HttpError(404, "作业提交不存在")
+    if submission.user_id != user.id:
+        raise HttpError(403, "无权查看他人的作业")
     return {
         'id': submission.id,
         'assignment_id': submission.assignment.id,
@@ -483,8 +489,8 @@ def get_my_courses(
 
     GET /api/v1/training/courses
     """
-    user_id = 1  # 实际项目中从认证获取
-    result = CourseService.get_user_courses(user_id, page, page_size)
+    user = request.auth
+    result = CourseService.get_user_courses(user.id, page, page_size)
     return result
 
 
@@ -494,8 +500,8 @@ def get_course_detail(request, course_id: int):
 
     GET /api/v1/training/courses/{course_id}
     """
-    user_id = 1  # 实际项目中从认证获取
-    course = CourseService.get_course_detail(course_id, user_id)
+    user = request.auth
+    course = CourseService.get_course_detail(course_id, user.id)
     if not course:
         raise HttpError(404, "课程不存在或您未报名该课程")
     return course
@@ -507,9 +513,9 @@ def mark_chapter_complete(request, course_id: int, chapter_id: int):
 
     POST /api/v1/training/courses/{course_id}/chapters/{chapter_id}/complete
     """
-    user_id = 1  # 实际项目中从认证获取
+    user = request.auth
     try:
-        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user_id)
+        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user.id)
     except:
         raise HttpError(404, "您未报名该课程")
 
@@ -530,10 +536,10 @@ def submit_assignment(request, assignment_id: int, data: AssignmentSubmissionCre
 
     POST /api/v1/training/assignments/{assignment_id}/submit
     """
-    user_id = 1  # 实际项目中从认证获取
+    user = request.auth
     submission = AssignmentService.submit_assignment(
         assignment_id=assignment_id,
-        user_id=user_id,
+        user_id=user.id,
         content=data.content,
         attachment_url=data.attachment_url or ""
     )
@@ -557,6 +563,12 @@ def resubmit_assignment(request, submission_id: int, data: AssignmentSubmissionC
 
     POST /api/v1/training/submissions/{submission_id}/resubmit
     """
+    user = request.auth
+    existing = AssignmentService.get_assignment_detail(submission_id)
+    if not existing:
+        raise HttpError(404, "作业提交不存在")
+    if existing.user_id != user.id:
+        raise HttpError(403, "无权操作他人的作业")
     submission = AssignmentService.resubmit_assignment(
         submission_id=submission_id,
         content=data.content,
@@ -588,8 +600,8 @@ def get_training_notifications(
 
     GET /api/v1/training/notifications
     """
-    user_id = 1  # 实际项目中从认证获取
-    result = NotificationService.get_user_notifications(user_id, page, page_size)
+    user = request.auth
+    result = NotificationService.get_user_notifications(user.id, page, page_size)
     return result
 
 
@@ -599,9 +611,9 @@ def submit_course_review(request, course_id: int, data: CourseReviewCreateSchema
 
     POST /api/v1/training/courses/{course_id}/review
     """
-    user_id = 1  # 实际项目中从认证获取
+    user = request.auth
     try:
-        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user_id)
+        enrollment = CourseEnrollment.objects.get(course_id=course_id, user_id=user.id)
     except:
         raise HttpError(404, "您未报名该课程")
 

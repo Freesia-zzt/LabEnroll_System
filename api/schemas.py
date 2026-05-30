@@ -1,10 +1,7 @@
 """API Schema 定义."""
 
 from datetime import datetime
-<<<<<<< HEAD
-=======
 from typing import Any, List, Optional
->>>>>>> master
 
 from ninja import Schema
 
@@ -26,25 +23,6 @@ class MessageSchema(Schema):
     message: str
 
 
-<<<<<<< HEAD
-class PaginationSchema(Schema):
-    """分页信息."""
-
-    total: int
-    current_page: int
-    per_page: int
-    last_page: int
-
-
-# ==================== 用户相关 Schema ====================
-
-
-class UserBriefSchema(Schema):
-    """用户简要信息."""
-
-    model_config = {"from_attributes": True}
-
-=======
 # ==================== 认证相关 Schema ====================
 
 class RegisterInput(Schema):
@@ -146,7 +124,6 @@ class UserInfoSchema(Schema):
 class EnrollmentSchema(Schema):
     """报名表单 Schema."""
     model_config = dict(from_attributes=True)
->>>>>>> master
     id: int
     name: str
     avatar: str | None = None

@@ -19,11 +19,6 @@ api = NinjaAPI(
                     "scheme": "bearer",
                     "bearerFormat": "JWT",
                 },
-                "apiKeyAuth": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "X-API-Key",
-                },
             }
         }
     },

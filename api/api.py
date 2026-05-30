@@ -1,7 +1,7 @@
 """API 路由定义."""
-from typing import Optional, List
 
-from ninja import Router, File, UploadedFile
+from django.http import HttpRequest
+from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
 from .auth_utils import api_response, auth_bearer
@@ -18,28 +18,10 @@ from .schemas import (
     VerifyActivationCodeInput,
     EnrollmentSchema,
     EnrollmentCreateSchema,
-    EnrollmentStatusSchema,
-    EnrollmentDraftSchema,
-    EnrollmentDraftCreateSchema,
-    EnrollmentFileSchema,
-    PaginatedEnrollmentList,
-    PaginatedDraftList,
+    EnrollmentListSchema,
+    EnrollmentSchema,
+    FileUploadResponseSchema,
     MessageSchema,
-    # 培训模块 Schema
-    TrainingStatisticsSchema,
-    LearningProgressSchema,
-    PaginatedCourseList,
-    CourseDetailSchema,
-    ChapterProgressSchema,
-    AssignmentSubmissionSchema,
-    AssignmentSubmissionCreateSchema,
-    AssignmentGradingSchema,
-    AssignmentReviewSchema,
-    PaginatedPendingAssignmentList,
-    PaginatedNotificationList,
-    CourseReviewSchema,
-    CourseReviewCreateSchema,
-    # 问题管理 Schema
     QuestionBriefSchema,
     QuestionCreateSchema,
     QuestionDetailSchema,
@@ -55,16 +37,10 @@ from .services import (
     EnrollmentService,
     EnrollmentDraftService,
     EnrollmentFileService,
-    TrainingStatisticsService,
-    LearningProgressService,
-    CourseService,
-    AssignmentService,
-    NotificationService,
-    CourseReviewService,
+    EnrollmentService,
     QuestionReplyService,
     QuestionService,
 )
-from .models import CourseEnrollment, Question
 
 router = Router(tags=["API"])
 enrollment_router = Router(tags=["报名相关"])
@@ -227,13 +203,14 @@ def forgot_password_reset(request, data: ForgotPasswordResetInput) -> dict:
 
 question_router = Router(tags=["问题管理"])
 
-# ==================== 报名相关 API ====================
 
-@enrollment_router.post("/enrollments", response=EnrollmentSchema)
-def submit_enrollment(request, data: EnrollmentCreateSchema):
-    """提交报名表单.
+# ==================== 认证相关（简化版）====================
 
-    POST /api/v1/enrollments
+
+def get_current_user(request: HttpRequest) -> User:
+    """获取当前登录用户（简化实现）.
+
+    实际项目中应该从 JWT Token 或 Session 中解析用户
     """
     # 这里需要从请求中获取当前用户ID，实际项目中应该通过认证获取
     # 为了演示，假设用户ID为1
@@ -641,22 +618,41 @@ def _get_current_user(request):
     return user
 
 
-@question_router.get("/categories", response={200: list}, summary="获取问题分类列表")
-def get_question_categories(request):
+# ==================== 问题 CRUD 接口 ====================
+
+
+@question_router.get(
+    "/categories",
+    response={200: list},
+    summary="获取问题分类列表",
+)
+def get_question_categories(request: HttpRequest) -> list:
     """获取所有问题分类列表."""
     return [
-        {"value": value, "label": label}
-        for value, label in Question.CATEGORY_CHOICES
+        {"value": value, "label": label} for value, label in Question.CATEGORY_CHOICES
     ]
 
 
-@question_router.post("", response={201: QuestionBriefSchema}, summary="新增问题")
-def create_question(request, data: QuestionCreateSchema):
-    """创建新问题."""
-    user = _get_current_user(request)
+@question_router.post(
+    "",
+    response={201: QuestionBriefSchema},
+    summary="新增问题",
+)
+def create_question(
+    request: HttpRequest,
+    data: QuestionCreateSchema,
+) -> QuestionBriefSchema:
+    """创建新问题.
+
+    需要登录权限
+    """
+    user = get_current_user(request)
+
+    # 验证分类是否有效
     valid_categories = [c[0] for c in Question.CATEGORY_CHOICES]
     if data.category not in valid_categories:
         raise HttpError(400, f"无效的分类，可选: {valid_categories}")
+
     question = QuestionService.create_question(
         author=user,
         title=data.title,
@@ -664,15 +660,34 @@ def create_question(request, data: QuestionCreateSchema):
         category=data.category,
         attachments=data.attachments,
     )
+
     return 201, question
 
 
-@question_router.get("", response={200: QuestionListSchema}, summary="获取问题列表")
-def list_questions(request, filters: QuestionFilterSchema = QuestionFilterSchema()):
-    """获取问题列表，支持分页、筛选、搜索."""
-    user = _get_current_user(request)
-    if filters.status and filters.status not in ["all", "pending", "replied", "resolved"]:
+@question_router.get(
+    "",
+    response={200: QuestionListSchema},
+    summary="获取问题列表",
+)
+def list_questions(
+    request: HttpRequest,
+    filters: QuestionFilterSchema = QuestionFilterSchema(),
+) -> QuestionListSchema:
+    """获取问题列表.
+
+    支持分页、分类筛选、状态筛选、关键词搜索
+    """
+    user = get_current_user(request)
+
+    # 验证状态参数
+    if filters.status and filters.status not in [
+        "all",
+        "pending",
+        "replied",
+        "resolved",
+    ]:
         raise HttpError(400, "无效的状态参数")
+
     questions, total = QuestionService.get_question_list(
         user=user,
         category=filters.category,
@@ -681,7 +696,10 @@ def list_questions(request, filters: QuestionFilterSchema = QuestionFilterSchema
         page=filters.page,
         per_page=filters.per_page,
     )
+
+    # 计算分页信息
     last_page = (total + filters.per_page - 1) // filters.per_page
+
     return {
         "data": list(questions),
         "pagination": {
@@ -693,26 +711,52 @@ def list_questions(request, filters: QuestionFilterSchema = QuestionFilterSchema
     }
 
 
-@question_router.get("/{question_id}", response={200: QuestionDetailSchema}, summary="获取问题详情")
-def get_question(request, question_id: int):
+@question_router.get(
+    "/{question_id}",
+    response={200: QuestionDetailSchema},
+    summary="获取问题详情",
+)
+def get_question(
+    request: HttpRequest,
+    question_id: int,
+) -> QuestionDetailSchema:
     """获取单个问题详情，包含回复列表."""
     question = QuestionService.get_question_detail(question_id)
+
     if not question:
         raise HttpError(404, "问题不存在")
+
     return question
 
 
-@question_router.put("/{question_id}", response={200: QuestionBriefSchema}, summary="修改问题")
-def update_question(request, question_id: int, data: QuestionUpdateSchema):
-    """修改问题内容，仅问题发布者可修改."""
-    user = _get_current_user(request)
+@question_router.put(
+    "/{question_id}",
+    response={200: QuestionBriefSchema},
+    summary="修改问题",
+)
+def update_question(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionUpdateSchema,
+) -> QuestionBriefSchema:
+    """修改问题内容.
+
+    仅问题发布者可修改
+    """
+    user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
+
     if not question:
         raise HttpError(404, "问题不存在")
+
+    # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权修改此问题")
+
+    # 已解决的问题不能修改
     if question.status == Question.STATUS_RESOLVED:
         raise HttpError(400, "已解决的问题不能修改")
+
     updated = QuestionService.update_question(
         question=question,
         title=data.title,
@@ -720,80 +764,162 @@ def update_question(request, question_id: int, data: QuestionUpdateSchema):
         category=data.category,
         attachments=data.attachments,
     )
+
     return updated
 
 
-@question_router.delete("/{question_id}", response={200: MessageSchema}, summary="删除问题")
-def delete_question(request, question_id: int):
-    """删除问题，仅问题发布者可删除."""
-    user = _get_current_user(request)
+@question_router.delete(
+    "/{question_id}",
+    response={200: MessageSchema},
+    summary="删除问题",
+)
+def delete_question(
+    request: HttpRequest,
+    question_id: int,
+) -> MessageSchema:
+    """删除问题.
+
+    仅问题发布者可删除
+    """
+    user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
+
     if not question:
         raise HttpError(404, "问题不存在")
+
+    # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权删除此问题")
+
     QuestionService.delete_question(question)
+
     return {"message": "删除成功"}
 
 
-@question_router.put("/{question_id}/status", response={200: QuestionBriefSchema}, summary="更新问题状态")
-def update_question_status(request, question_id: int, data: QuestionStatusUpdateSchema):
-    """更新问题状态（标记已解决等），仅问题发布者可操作."""
-    user = _get_current_user(request)
+@question_router.put(
+    "/{question_id}/status",
+    response={200: QuestionBriefSchema},
+    summary="更新问题状态",
+)
+def update_question_status(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionStatusUpdateSchema,
+) -> QuestionBriefSchema:
+    """更新问题状态（标记已解决等）.
+
+    仅问题发布者可操作
+    """
+    user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
+
     if not question:
         raise HttpError(404, "问题不存在")
+
+    # 检查权限
     if question.author_id != user.id:
         raise HttpError(403, "无权操作此问题")
+
+    # 验证状态值
     valid_statuses = [s[0] for s in Question.STATUS_CHOICES]
     if data.status not in valid_statuses:
         raise HttpError(400, f"无效的状态，可选: {valid_statuses}")
-    return QuestionService.update_question_status(question, data.status)
+
+    updated = QuestionService.update_question_status(question, data.status)
+    return updated
 
 
-@question_router.post("/{question_id}/replies", response={201: QuestionReplySchema}, summary="回复问题")
-def create_reply(request, question_id: int, data: QuestionReplyCreateSchema):
+# ==================== 问题回复接口 ====================
+
+
+@question_router.post(
+    "/{question_id}/replies",
+    response={201: QuestionReplySchema},
+    summary="回复问题",
+)
+def create_reply(
+    request: HttpRequest,
+    question_id: int,
+    data: QuestionReplyCreateSchema,
+) -> QuestionReplySchema:
     """对问题发表回复."""
-    user = _get_current_user(request)
+    user = get_current_user(request)
     question = QuestionService.get_question_detail(question_id)
+
     if not question:
         raise HttpError(404, "问题不存在")
+
     reply = QuestionReplyService.create_reply(
         question=question,
         author=user,
         content=data.content,
     )
+
     return 201, reply
 
 
-@question_router.post("/upload", response={200: dict}, summary="附件/图片上传")
-def upload_question_file(request, file: UploadedFile = File(...)):
-    """上传问题附件或图片，支持 JPG/PNG/GIF/PDF/DOC/DOCX，文件大小限制: 5MB."""
+# ==================== 文件上传接口 ====================
+
+
+@question_router.post(
+    "/upload",
+    response={200: dict},
+    summary="附件/图片上传",
+)
+def upload_question_file(
+    request: HttpRequest,
+    file: UploadedFile = File(...),
+) -> dict:
+    """上传问题附件或图片.
+
+    支持图片(JPG/PNG/GIF)和文档(PDF/DOC/DOCX)格式
+    文件大小限制: 5MB
+    """
     import os
     import uuid
+
     from django.conf import settings
+
+    # 验证文件类型
     allowed_types = [
-        "image/jpeg", "image/png", "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
+
     if file.content_type not in allowed_types:
-        raise HttpError(400, "不支持的文件类型")
+        raise HttpError(400, "不支持的文件类型，仅支持 JPG/PNG/GIF/PDF/DOC/DOCX")
+
+    # 验证文件大小 (5MB)
     max_size = 5 * 1024 * 1024
     if file.size > max_size:
         raise HttpError(400, "文件大小超过5MB限制")
+
+    # 生成唯一文件名
     ext = os.path.splitext(file.name)[1].lower()
     filename = f"{uuid.uuid4().hex}{ext}"
+
+    # 确定存储路径 (按日期分目录)
     from datetime import datetime
+
     today = datetime.now()
     relative_path = f"questions/{today.year}/{today.month:02d}/{filename}"
     full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+
+    # 确保目录存在
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+    # 保存文件
     with open(full_path, "wb+") as destination:
         for chunk in file.chunks():
             destination.write(chunk)
+
+    # 返回文件URL
     file_url = f"{settings.MEDIA_URL}{relative_path}"
+
     return {
         "code": 200,
         "message": "上传成功",

@@ -6,20 +6,12 @@ from django.utils import timezone
 
 
 class User(models.Model):
-    """用户模型."""
-    username = models.CharField(max_length=100, unique=True, verbose_name="用户名")
-    email = models.EmailField(unique=True, verbose_name="邮箱")
-    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="手机号")
-    name = models.CharField(max_length=100, verbose_name="姓名")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    """用户模型（旧版，已废弃，请使用 LabUser）."""
 
     class Meta:
+        managed = False
         verbose_name = "用户"
         verbose_name_plural = "用户"
-
-    def __str__(self):
-        return self.username
 
 
 # ==================== 培训模块模型 ====================
@@ -36,7 +28,7 @@ class Course(models.Model):
     description = models.TextField(verbose_name="课程描述")
     cover_image = models.CharField(max_length=500, blank=True, verbose_name="封面图片")
     instructor = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True,
+        'LabUser', on_delete=models.SET_NULL, null=True,
         related_name='taught_courses', verbose_name="讲师"
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name="状态")
@@ -109,7 +101,7 @@ class CourseEnrollment(models.Model):
         ('cancelled', '已取消'),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='course_enrollments', verbose_name="用户")
+    user = models.ForeignKey('LabUser', on_delete=models.CASCADE, related_name='course_enrollments', verbose_name="用户")
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='enrollments', verbose_name="课程")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='enrolled', verbose_name="状态")
     progress_percent = models.IntegerField(default=0, verbose_name="学习进度(%)")
@@ -175,7 +167,7 @@ class AssignmentSubmission(models.Model):
     ]
 
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions', verbose_name="作业")
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assignment_submissions', verbose_name="用户")
+    user = models.ForeignKey('LabUser', on_delete=models.CASCADE, related_name='assignment_submissions', verbose_name="用户")
     content = models.TextField(verbose_name="提交内容")
     attachment_url = models.CharField(max_length=500, blank=True, verbose_name="附件URL")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted', verbose_name="状态")
@@ -253,7 +245,7 @@ class Enrollment(models.Model):
         ('cancelled', '已取消'),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="用户")
+    user = models.ForeignKey('LabUser', on_delete=models.CASCADE, verbose_name="用户")
     course_name = models.CharField(max_length=200, verbose_name="课程名称")
     department = models.CharField(max_length=100, verbose_name="部门")
     position = models.CharField(max_length=100, verbose_name="职位")
@@ -273,7 +265,7 @@ class Enrollment(models.Model):
 
 class EnrollmentDraft(models.Model):
     """报名草稿模型."""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="用户")
+    user = models.ForeignKey('LabUser', on_delete=models.CASCADE, verbose_name="用户")
     course_name = models.CharField(max_length=200, blank=True, verbose_name="课程名称")
     department = models.CharField(max_length=100, blank=True, verbose_name="部门")
     position = models.CharField(max_length=100, blank=True, verbose_name="职位")
@@ -493,7 +485,7 @@ class TokenBlacklist(models.Model):
     jti = models.CharField(max_length=255, unique=True, verbose_name="Token JTI")
     token_type = models.CharField(max_length=20, verbose_name="Token 类型(access/refresh)")
     user = models.ForeignKey(
-        LabUser,
+        'LabUser',
         on_delete=models.CASCADE,
         verbose_name="所属用户",
     )

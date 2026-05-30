@@ -4,10 +4,7 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from django.core.files.uploadedfile import UploadedFile
-from django.db import models
-from django.db.models import Count, Avg, Sum, Q
-from django.utils import timezone
+from django.db.models import Q, QuerySet
 
 from .auth_utils import (
     create_access_token,
@@ -299,33 +296,77 @@ class EnrollmentService:
     """报名服务类."""
 
     @staticmethod
-    def create_enrollment(user_id: int, data: dict) -> Enrollment:
-        """创建报名.
+    def create_enrollment(
+        user: User,
+        course_name: str,
+        department: str,
+        position: str,
+        reason: str,
+    ) -> Enrollment:
+        """创建报名记录.
 
         Args:
-            user_id: 用户ID
-            data: 报名数据
+            user: 报名用户
+            course_name: 课程名称
+            department: 部门
+            position: 职位
+            reason: 报名理由
 
         Returns:
-            创建的报名对象
+            创建的报名实例
         """
         return Enrollment.objects.create(
-            user_id=user_id,
-            course_name=data['course_name'],
-            department=data['department'],
-            position=data['position'],
-            reason=data['reason'],
+            user=user,
+            course_name=course_name,
+            department=department,
+            position=position,
+            reason=reason,
         )
 
     @staticmethod
-    def get_enrollment(enrollment_id: int) -> Optional[Enrollment]:
+    def get_enrollment_list(
+        user: User | None = None,
+        status: str | None = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[QuerySet[Enrollment], int]:
+        """获取报名列表.
+
+        Args:
+            user: 按用户筛选
+            status: 按状态筛选
+            page: 当前页码
+            per_page: 每页数量
+
+        Returns:
+            (报名查询集, 总数量)
+        """
+        queryset = Enrollment.objects.all()
+
+        if user:
+            queryset = queryset.filter(user=user)
+
+        if status and status != "all":
+            queryset = queryset.filter(status=status)
+
+        total = queryset.count()
+
+        # 分页
+        start = (page - 1) * per_page
+        end = start + per_page
+        queryset = queryset[start:end]
+
+        return queryset, total
+
+    @staticmethod
+    def get_enrollment_detail(enrollment_id: int) -> Enrollment | None:
         """获取报名详情.
 
         Args:
             enrollment_id: 报名ID
 
         Returns:
-            报名对象或 None
+            报名实例，不存在则返回None
         """
         try:
             return Enrollment.objects.get(id=enrollment_id)
@@ -333,183 +374,167 @@ class EnrollmentService:
             return None
 
     @staticmethod
-    def get_enrollments_by_user(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取用户的报名列表（分页）.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        queryset = Enrollment.objects.filter(user_id=user_id).order_by('-submitted_at')
-        total = queryset.count()
-        items = queryset[(page - 1) * page_size:page * page_size]
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': list(items)
-        }
-
-    @staticmethod
-    def update_enrollment(enrollment_id: int, data: dict) -> Optional[Enrollment]:
+    def update_enrollment(
+        enrollment: Enrollment,
+        **kwargs,
+    ) -> Enrollment:
         """更新报名信息.
 
         Args:
-            enrollment_id: 报名ID
-            data: 更新数据
+            enrollment: 报名实例
+            kwargs: 要更新的字段
 
         Returns:
-            更新后的报名对象或 None
+            更新后的报名实例
         """
-        try:
-            enrollment = Enrollment.objects.get(id=enrollment_id)
-            for key, value in data.items():
-                if value is not None:
-                    setattr(enrollment, key, value)
-            enrollment.save()
-            return enrollment
-        except Enrollment.DoesNotExist:
-            return None
+        for key, value in kwargs.items():
+            if value is not None and hasattr(enrollment, key):
+                setattr(enrollment, key, value)
+
+        enrollment.save()
+        return enrollment
 
     @staticmethod
-    def cancel_enrollment(enrollment_id: int) -> bool:
+    def cancel_enrollment(enrollment: Enrollment) -> Enrollment:
         """取消报名.
 
         Args:
-            enrollment_id: 报名ID
+            enrollment: 报名实例
 
         Returns:
-            是否取消成功
+            更新后的报名实例
         """
-        try:
-            enrollment = Enrollment.objects.get(id=enrollment_id)
-            enrollment.status = 'cancelled'
-            enrollment.save()
-            return True
-        except Enrollment.DoesNotExist:
-            return False
+        enrollment.status = Enrollment.STATUS_CANCELLED
+        enrollment.save()
+        return enrollment
+
+    @staticmethod
+    def delete_enrollment(enrollment: Enrollment) -> None:
+        """删除报名记录.
+
+        Args:
+            enrollment: 报名实例
+        """
+        enrollment.delete()
 
 
 class EnrollmentDraftService:
     """报名草稿服务类."""
 
     @staticmethod
-    def create_draft(user_id: int, data: dict) -> EnrollmentDraft:
+    def create_draft(
+        user: User,
+        course_name: str = "",
+        department: str = "",
+        position: str = "",
+        reason: str = "",
+        draft_data: dict = None,
+    ) -> EnrollmentDraft:
         """创建草稿.
 
         Args:
-            user_id: 用户ID
-            data: 草稿数据
+            user: 用户
+            course_name: 课程名称
+            department: 部门
+            position: 职位
+            reason: 报名理由
+            draft_data: 额外草稿数据
 
         Returns:
-            创建的草稿对象
+            创建的草稿实例
         """
         return EnrollmentDraft.objects.create(
-            user_id=user_id,
-            course_name=data.get('course_name', ''),
-            department=data.get('department', ''),
-            position=data.get('position', ''),
-            reason=data.get('reason', ''),
-            draft_data=data.get('draft_data', {}),
+            user=user,
+            course_name=course_name,
+            department=department,
+            position=position,
+            reason=reason,
+            draft_data=draft_data or {},
         )
 
     @staticmethod
-    def get_draft(draft_id: int) -> Optional[EnrollmentDraft]:
+    def get_draft_list(
+        user: User,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[QuerySet[EnrollmentDraft], int]:
+        """获取草稿列表.
+
+        Args:
+            user: 用户
+            page: 当前页码
+            per_page: 每页数量
+
+        Returns:
+            (草稿查询集, 总数量)
+        """
+        queryset = EnrollmentDraft.objects.filter(user=user)
+        total = queryset.count()
+
+        # 分页
+        start = (page - 1) * per_page
+        end = start + per_page
+        queryset = queryset[start:end]
+
+        return queryset, total
+
+    @staticmethod
+    def get_draft_detail(draft_id: int, user: User) -> EnrollmentDraft | None:
         """获取草稿详情.
 
         Args:
             draft_id: 草稿ID
+            user: 用户（用于权限验证）
 
         Returns:
-            草稿对象或 None
+            草稿实例，不存在或无权限则返回None
         """
         try:
-            return EnrollmentDraft.objects.get(id=draft_id)
+            return EnrollmentDraft.objects.get(id=draft_id, user=user)
         except EnrollmentDraft.DoesNotExist:
             return None
 
     @staticmethod
-    def get_drafts_by_user(user_id: int, page: int = 1, page_size: int = 20) -> dict:
-        """获取用户的草稿列表（分页）.
-
-        Args:
-            user_id: 用户ID
-            page: 页码
-            page_size: 每页大小
-
-        Returns:
-            分页结果字典
-        """
-        queryset = EnrollmentDraft.objects.filter(user_id=user_id).order_by('-updated_at')
-        total = queryset.count()
-        items = queryset[(page - 1) * page_size:page * page_size]
-        return {
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'items': list(items)
-        }
-
-    @staticmethod
-    def update_draft(draft_id: int, data: dict) -> Optional[EnrollmentDraft]:
+    def update_draft(
+        draft: EnrollmentDraft,
+        **kwargs,
+    ) -> EnrollmentDraft:
         """更新草稿.
 
         Args:
-            draft_id: 草稿ID
-            data: 更新数据
+            draft: 草稿实例
+            kwargs: 要更新的字段
 
         Returns:
-            更新后的草稿对象或 None
+            更新后的草稿实例
         """
-        try:
-            draft = EnrollmentDraft.objects.get(id=draft_id)
-            if 'course_name' in data:
-                draft.course_name = data['course_name']
-            if 'department' in data:
-                draft.department = data['department']
-            if 'position' in data:
-                draft.position = data['position']
-            if 'reason' in data:
-                draft.reason = data['reason']
-            if 'draft_data' in data:
-                draft.draft_data = data['draft_data']
-            draft.save()
-            return draft
-        except EnrollmentDraft.DoesNotExist:
-            return None
+        for key, value in kwargs.items():
+            if value is not None and hasattr(draft, key):
+                setattr(draft, key, value)
+
+        draft.save()
+        return draft
 
     @staticmethod
-    def delete_draft(draft_id: int) -> bool:
+    def delete_draft(draft: EnrollmentDraft) -> None:
         """删除草稿.
 
         Args:
-            draft_id: 草稿ID
-
-        Returns:
-            是否删除成功
+            draft: 草稿实例
         """
-        try:
-            draft = EnrollmentDraft.objects.get(id=draft_id)
-            draft.delete()
-            return True
-        except EnrollmentDraft.DoesNotExist:
-            return False
+        draft.delete()
 
     @staticmethod
-    def clear_all_drafts(user_id: int) -> int:
-        """清空所有草稿.
+    def clear_all_drafts(user: User) -> int:
+        """清空用户所有草稿.
 
         Args:
-            user_id: 用户ID
+            user: 用户
 
         Returns:
             删除的草稿数量
         """
-        deleted_count, _ = EnrollmentDraft.objects.filter(user_id=user_id).delete()
+        deleted_count, _ = EnrollmentDraft.objects.filter(user=user).delete()
         return deleted_count
 
 
@@ -518,48 +543,72 @@ class EnrollmentFileService:
 
     @staticmethod
     def upload_file(
-        file: UploadedFile,
-        enrollment_id: Optional[int] = None,
-        draft_id: Optional[int] = None
+        file,
+        enrollment: Enrollment = None,
+        draft: EnrollmentDraft = None,
     ) -> EnrollmentFile:
         """上传文件.
 
         Args:
-            file: 上传的文件
-            enrollment_id: 报名ID（可选）
-            draft_id: 草稿ID（可选）
+            file: 上传的文件对象
+            enrollment: 关联的报名记录（二选一）
+            draft: 关联的草稿（二选一）
 
         Returns:
-            文件对象
+            创建的文件实例
         """
+        import os
+        import uuid
+        from datetime import datetime
+
+        from django.conf import settings
+
+        # 生成唯一文件名
+        ext = os.path.splitext(file.name)[1].lower()
+        filename = f"{uuid.uuid4().hex}{ext}"
+
+        # 确定存储路径
+        today = datetime.now()
+        relative_path = f"enrollments/{today.year}/{today.month:02d}/{filename}"
+        full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+
+        # 确保目录存在
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+        # 保存文件
+        with open(full_path, "wb+") as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
         return EnrollmentFile.objects.create(
-            enrollment_id=enrollment_id,
-            draft_id=draft_id,
-            file=file,
+            enrollment=enrollment,
+            draft=draft,
             file_name=file.name,
+            file_path=relative_path,
             file_size=file.size,
         )
 
     @staticmethod
-    def delete_file(file_id: int) -> bool:
+    def delete_file(enrollment_file: EnrollmentFile) -> None:
         """删除文件.
 
         Args:
-            file_id: 文件ID
-
-        Returns:
-            是否删除成功
+            enrollment_file: 文件实例
         """
-        try:
-            file_obj = EnrollmentFile.objects.get(id=file_id)
-            file_obj.file.delete()  # 删除物理文件
-            file_obj.delete()  # 删除数据库记录
-            return True
-        except EnrollmentFile.DoesNotExist:
-            return False
+        import os
+
+        from django.conf import settings
+
+        # 删除物理文件
+        full_path = os.path.join(settings.MEDIA_ROOT, enrollment_file.file_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+
+        # 删除数据库记录
+        enrollment_file.delete()
 
     @staticmethod
-    def get_files_by_enrollment(enrollment_id: int) -> List[EnrollmentFile]:
+    def get_files_by_enrollment(enrollment_id: int) -> list[EnrollmentFile]:
         """获取报名相关文件.
 
         Args:
@@ -571,7 +620,7 @@ class EnrollmentFileService:
         return list(EnrollmentFile.objects.filter(enrollment_id=enrollment_id))
 
     @staticmethod
-    def get_files_by_draft(draft_id: int) -> List[EnrollmentFile]:
+    def get_files_by_draft(draft_id: int) -> list[EnrollmentFile]:
         """获取草稿相关文件.
 
         Args:

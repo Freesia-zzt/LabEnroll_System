@@ -37,6 +37,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "api",
+    "notice",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -77,7 +78,9 @@ DATABASES = {
     )
 }
 
-# Password validation (已禁用，因项目不使用 Django 内置认证系统)
+AUTH_USER_MODEL = "api.LabUser"
+
+# Password validation
 AUTH_PASSWORD_VALIDATORS = []
 
 # Internationalization
@@ -155,7 +158,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = "DENY"
 
-# Ninja API 配置（django-ninja 支持的配置项）
+# Ninja API 配置
 NINJA_PAGINATION_PER_PAGE = 20
 
 AUTH_USER_MODEL = "api.LabUser"

@@ -1,11 +1,18 @@
 """API Schema 定义."""
 
 from datetime import datetime
+from typing import Any
 from typing import Any, List, Optional
 
 from ninja import Schema
 
 # ==================== 基础响应 Schema ====================
+
+class ApiResponseSchema(Schema):
+    """统一 API 响应格式."""
+    code: int = 200
+    msg: str = "操作成功"
+    data: Any = None
 
 
 # ==================== 基础响应 Schema ====================
@@ -141,6 +148,98 @@ class PaginationSchema(Schema):
     last_page: int
 
 
+# ==================== 认证相关 Schema ====================
+
+class LoginInput(Schema):
+    """登录请求."""
+    account: str
+    password: str
+    remember_me: bool = False
+
+
+class LoginData(Schema):
+    """登录响应数据."""
+    user_id: int
+    account: str
+    username: str
+    role: int
+    token: str
+    refresh_token: str
+
+
+class SendActivationCodeInput(Schema):
+    """发送激活码请求."""
+    account: str
+
+
+class VerifyActivationCodeInput(Schema):
+    """验证激活码请求."""
+    account: str
+    activation_code: str
+
+
+class RefreshTokenInput(Schema):
+    """刷新 Token 请求."""
+    refresh_token: str
+
+
+class RefreshTokenData(Schema):
+    """刷新 Token 响应数据."""
+    token: str
+    refresh_token: str
+
+
+class UpdateInfoInput(Schema):
+    """修改个人资料请求."""
+    username: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    old_password: str | None = None
+    new_password: str | None = None
+
+
+class ChangePasswordInput(Schema):
+    """修改密码请求."""
+    old_password: str
+    new_password: str
+    new_password_confirmation: str
+
+
+class ForgotPasswordSendCodeInput(Schema):
+    """忘记密码-发送验证码请求."""
+    account: str
+    email: str
+
+
+class ForgotPasswordResetInput(Schema):
+    """忘记密码-重置密码请求."""
+    account: str
+    email: str
+    code: str
+    new_password: str
+    new_password_confirmation: str
+
+
+class UserInfoSchema(Schema):
+    """用户完整信息（不含敏感字段）."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    account: str
+    username: str
+    phone: str | None = None
+    email: str | None = None
+    role: int
+    is_active: int
+    department_id: int | None = None
+    last_login_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ==================== 用户相关 Schema ====================
+
+
 class UserBriefSchema(Schema):
     """用户简要信息."""
 
@@ -179,8 +278,8 @@ class QuestionCreateSchema(Schema):
 
     title: str
     content: str
-    category: str = "other"  # 默认其他分类
-    attachments: list[str] = []  # 附件URL列表
+    category: str = "other"
+    attachments: list[str] = []
 
 
 class QuestionUpdateSchema(Schema):
@@ -197,9 +296,9 @@ class QuestionFilterSchema(Schema):
 
     page: int = 1
     per_page: int = 10
-    category: str | None = None  # 按分类筛选
-    status: str | None = None  # 按状态筛选
-    search: str | None = None  # 搜索关键词
+    category: str | None = None
+    status: str | None = None
+    search: str | None = None
 
 
 class QuestionBriefSchema(Schema):
@@ -210,9 +309,9 @@ class QuestionBriefSchema(Schema):
     id: int
     title: str
     category: str
-    category_display: str  # 分类的中文显示
+    category_display: str
     status: str
-    status_display: str  # 状态的中文显示
+    status_display: str
     reply_count: int
     created_at: datetime
     author: UserBriefSchema
@@ -247,7 +346,7 @@ class QuestionDetailSchema(Schema):
 
 class QuestionStatusUpdateSchema(Schema):
     """更新问题状态请求."""
-    status: str  # pending, replied, resolved
+    status: str
 
 
 # ==================== 报名相关 Schema ====================

@@ -1,0 +1,1120 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "实验室招新系统 - 完整接口文档 v2.0",
+    "description": "基于 Django + django-ninja 的管理员后台完整接口。\n\n## 🔐 认证方式\n- `Authorization: Bearer <access_token>`\n\n## 🔑 测试账号\n| 角色 | 账号 | 密码 |\n|------|------|------|\n| 超管 | admin | admin123 |\n| 普通学员 | 2024001 | test123456 |",
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "本地开发服务器"
+    }
+  ],
+  "paths": {
+    "/api/user/login": {
+      "post": {
+        "tags": ["🔐 认证管理"],
+        "summary": "用户登录",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginInput" },
+              "example": { "account": "admin", "password": "admin123", "remember_me": false }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "登录成功",
+                  "data": {
+                    "user_id": 5,
+                    "account": "admin",
+                    "username": "超级管理员",
+                    "role": 2,
+                    "token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo1LCJyb2xlIjoyLCJhY2NvdW50IjoiYWRtaW4iLCJ0b2tlbl90eXBlIjoiYWNjZXNzIiwianRpIjoiYWNjXzVfMTc3OTk2OTU1NSIsImlhdCI6MTc3OTk2OTU1NSwiZXhwIjoxNzgwMDU1OTU1fQ.example",
+                    "refresh_token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo1LCJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImp0aSI6InJlZl81XzE3Nzk5Njk1NTUiLCJpYXQiOjE3Nzk5Njk1NTUsImV4cCI6MTc4MDU3NDM1NX0.example"
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "账号或密码错误", "content": { "application/json": { "example": { "detail": "账号或密码错误" } } } },
+          "403": { "description": "账号未激活", "content": { "application/json": { "example": { "detail": "账号未激活，请先激活" } } } }
+        }
+      }
+    },
+    "/api/user/me": {
+      "get": {
+        "tags": ["🔐 认证管理"],
+        "summary": "获取当前用户信息",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "msg": "操作成功",
+                  "data": {
+                    "id": 5,
+                    "account": "admin",
+                    "username": "超级管理员",
+                    "phone": null,
+                    "email": null,
+                    "role": 2,
+                    "is_active": 1,
+                    "department_id": null,
+                    "last_login_at": "2026-05-31T09:38:20.440Z",
+                    "created_at": "2026-05-31T08:20:10.622Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "未认证", "content": { "application/json": { "example": { "detail": "Unauthorized" } } } }
+        }
+      }
+    },
+    "/api/admin/departments": {
+      "get": {
+        "tags": ["🏢 部门管理"],
+        "summary": "获取部门列表",
+        "description": "分页列表，支持 name 模糊搜索。不需要管理员权限。",
+        "security": [],
+        "parameters": [
+          { "name": "name", "in": "query", "required": false, "schema": { "type": "string" }, "description": "部门名称模糊搜索" },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 20 } },
+          { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "部门列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "name": "AI Lab", "intro": "AI research", "tech_stack": "Python/ML", "manager_name": null, "sort_order": 10, "is_active": true, "created_at": "2026-05-31T08:21:00.958Z", "updated_at": "2026-05-31T08:21:00.958Z" },
+                    { "id": 2, "name": "技术研发部", "intro": "负责实验室系统开发", "tech_stack": "Python/Django/React", "manager_name": "超级管理员", "sort_order": 20, "is_active": true, "created_at": "2026-05-28T11:34:59.254Z", "updated_at": "2026-05-31T08:21:00.993Z" }
+                  ],
+                  "count": 3
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["🏢 部门管理"],
+        "summary": "创建部门",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DepartmentIn" },
+              "example": { "name": "人工智能研发部", "intro": "专注AI算法研究", "tech_stack": "Python/PyTorch", "manager_id": 5, "sort_order": 1 }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "部门创建成功",
+            "content": { "application/json": { "example": { "code": 200, "message": "部门创建成功", "data": { "id": 3, "name": "人工智能研发部", "intro": "专注AI算法研究", "tech_stack": "Python/PyTorch", "manager_name": "超级管理员", "sort_order": 1, "is_active": true, "created_at": "2026-05-31T08:31:23.998Z", "updated_at": "2026-05-31T08:31:23.998Z" } } } }
+          },
+          "400": { "content": { "application/json": { "example": { "detail": "部门名称「人工智能研发部」已存在" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/departments/sort": {
+      "put": {
+        "tags": ["🏢 部门管理"],
+        "summary": "批量排序部门",
+        "description": "使用 Case/When 单条 SQL 批量更新排序顺序。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "items": [{ "id": 1, "sort_order": 10 }, { "id": 2, "sort_order": 20 }] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "已更新 2 个部门的排序", "data": null } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "部门 ID=99 不存在" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/departments/{department_id}": {
+      "put": {
+        "tags": ["🏢 部门管理"],
+        "summary": "更新部门",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "department_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DepartmentIn" },
+              "example": { "name": "AI Lab(更新)", "intro": "更新后的介绍", "tech_stack": "Python/Django/Vue", "manager_id": 5, "sort_order": 1 }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "部门更新成功", "data": { "id": 1, "name": "AI Lab(更新)", "intro": "更新后的介绍", "tech_stack": "Python/Django/Vue", "manager_name": "超级管理员", "sort_order": 1, "is_active": true, "created_at": "2026-05-28T11:34:59.254Z", "updated_at": "2026-05-31T08:21:00.993Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "部门不存在" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["🏢 部门管理"],
+        "summary": "删除部门（软删除）",
+        "description": "校验未处理报名记录，有则拒绝删除。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "department_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "部门已删除", "data": null } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "该部门下存在未处理的报名记录，无法删除" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "部门不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["👤 用户管理"],
+        "summary": "获取用户列表",
+        "description": "分页，支持学院/专业/关键词/状态筛选。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "academy", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "major", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "is_active", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "account": "2024001", "username": "张三", "phone": "13800138000", "email": "zhangsan@test.com", "department_name": "AI Lab", "is_active": 1, "role": 1, "academy": null, "major": null, "class_name": null, "created_at": "2026-05-24T11:05:00.837Z", "last_login_at": null }
+                  ],
+                  "count": 3
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/ban": {
+      "put": {
+        "tags": ["👤 用户管理"],
+        "summary": "封禁/解封用户",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "is_banned": true, "reason": "违规操作" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "用户 张三 已封禁", "data": { "id": 1, "account": "2024001", "username": "张三", "phone": "13800138000", "email": "zhangsan@test.com", "department_name": "AI Lab", "is_active": 0, "role": 1, "academy": null, "major": null, "class_name": null, "created_at": "2026-05-24T11:05:00.837Z", "last_login_at": null } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "用户不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/users/export": {
+      "get": {
+        "tags": ["👤 用户管理"],
+        "summary": "导出用户 Excel",
+        "description": "下载 xlsx 文件（openpyxl + iterator 分块）。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Excel 文件下载", "content": { "application/octet-stream": {} } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/applications": {
+      "get": {
+        "tags": ["📋 报名管理"],
+        "summary": "获取报名列表",
+        "description": "支持按部门、状态、学院、专业、时间范围复杂筛选。使用 select_related 防 N+1。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "department_id", "in": "query", "required": false, "schema": { "type": "integer" } },
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "integer" } },
+          { "name": "academy", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "major", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date_from", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date_to", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "报名列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "name": "张三", "status": 2, "status_display": "已通过", "audit_time": "2026-05-31T08:24:49.036Z", "audit_remark": "审核通过，欢迎加入", "class_name": "CS2101", "academy": "计算机学院", "major": "计算机科学", "email": "zhangsan@test.com", "director_name": null, "sign_reason": "对AI方向感兴趣", "department_name": "AI Lab", "department_id": 2, "user_id": 1, "user_account": "2024001", "user_username": "张三", "created_at": "2026-05-31T08:24:42.911Z" }
+                  ],
+                  "count": 2
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/applications/{application_id}/audit": {
+      "put": {
+        "tags": ["📋 报名管理"],
+        "summary": "单条审核报名",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "application_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "status": "approved", "remark": "审核通过，欢迎加入实验室！" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "报名记录已通过", "data": { "id": 1, "name": "张三", "status": 2, "status_display": "已通过", "audit_remark": "审核通过，欢迎加入实验室！", "department_name": "AI Lab", "user_username": "张三" } } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "该报名记录已审核，无法重复审核" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "报名记录不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/applications/batch-audit": {
+      "post": {
+        "tags": ["📋 报名管理"],
+        "summary": "批量审核报名",
+        "description": "事务 + select_for_update() 行级锁防止并发。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "ids": [1, 2, 3], "status": "approved", "remark": "审核通过，欢迎加入实验室！" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "成功审核 3 条报名记录", "data": null } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "包含无效或已审核的报名记录" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/statistics/overview": {
+      "get": {
+        "tags": ["📊 数据统计"],
+        "summary": "核心指标",
+        "description": "总报名数、通过数、待审核数、今日新增、各部门统计。结果缓存 5 分钟。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "统计概览",
+            "content": {
+              "application/json": {
+                "example": { "total_applications": 86, "approved_count": 42, "pending_count": 23, "today_new_count": 5, "department_stats": [{ "department_name": "AI Lab", "count": 35 }, { "department_name": "技术研发部", "count": 28 }] }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/statistics/trend": {
+      "get": {
+        "tags": ["📊 数据统计"],
+        "summary": "近 30 天报名趋势",
+        "description": "按天聚合，缺失日期自动补 0（30 条）。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "趋势数据（前 3 条示例）",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "date": "2026-05-02", "count": 0 },
+                  { "date": "2026-05-03", "count": 5 },
+                  { "date": "2026-05-04", "count": 3 }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/statistics/departments": {
+      "get": {
+        "tags": ["📊 数据统计"],
+        "summary": "部门报名热度排行",
+        "description": "按报名数降序排列。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "部门排行",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "department_name": "AI Lab", "count": 35 },
+                  { "department_name": "技术研发部", "count": 28 }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/statistics/sources": {
+      "get": {
+        "tags": ["📊 数据统计"],
+        "summary": "生源专业分布",
+        "description": "按专业 Group By 统计报名人数。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "专业分布",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "major": "计算机科学", "count": 30 },
+                  { "major": "软件工程", "count": 22 },
+                  { "major": "人工智能", "count": 15 }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/roles": {
+      "get": {
+        "tags": ["🔑 角色管理"],
+        "summary": "获取角色列表",
+        "description": "包含关联的权限 ID 集合。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "角色列表",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "id": 1, "name": "超管", "code": "super_admin", "description": "超级管理员，拥有系统所有权限", "permission_ids": [1, 2, 3, 4, 5, 6, 7, 8], "created_at": "2026-05-31T09:05:30.093Z", "updated_at": "2026-05-31T09:05:30.093Z" },
+                  { "id": 2, "name": "管理员", "code": "admin", "description": "普通管理员", "permission_ids": [2, 3, 5, 6], "created_at": "2026-05-31T09:05:30.093Z", "updated_at": "2026-05-31T09:05:30.093Z" }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["🔑 角色管理"],
+        "summary": "创建角色",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "name": "实习管理员", "code": "intern", "description": "实习管理员，有限权限", "permission_ids": [2, 3] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "角色创建成功", "data": { "id": 5, "name": "实习管理员", "code": "intern", "description": "实习管理员，有限权限", "permission_ids": [2, 3], "created_at": "2026-05-31T10:00:00.000Z", "updated_at": "2026-05-31T10:00:00.000Z" } } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "角色编码「intern」已存在" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/roles/{role_id}": {
+      "put": {
+        "tags": ["🔑 角色管理"],
+        "summary": "更新角色",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "role_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "name": "审核员", "code": "auditor", "description": "报名审核人员", "permission_ids": [1, 2] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "角色更新成功", "data": { "id": 3, "name": "审核员", "code": "auditor", "description": "报名审核人员", "permission_ids": [1, 2], "updated_at": "2026-05-31T09:17:39.213Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "角色不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/roles/options": {
+      "get": {
+        "tags": ["🔑 角色管理"],
+        "summary": "角色选项列表",
+        "description": "简要信息（ID/名称/编码），用于下拉选择。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "角色选项",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "id": 1, "name": "超管", "code": "super_admin" },
+                  { "id": 2, "name": "管理员", "code": "admin" },
+                  { "id": 3, "name": "审核员", "code": "auditor" },
+                  { "id": 4, "name": "内容编辑", "code": "editor" }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/admins": {
+      "get": {
+        "tags": ["🛡️ 管理员管理"],
+        "summary": "获取管理员列表",
+        "description": "展示角色名称。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "管理员列表",
+            "content": {
+              "application/json": {
+                "example": [
+                  { "id": 5, "account": "admin", "username": "超级管理员", "email": null, "phone": null, "is_active": 1, "role_names": ["超管"], "role_ids": [1], "last_login_at": "2026-05-31T09:38:20.440Z", "created_at": "2026-05-31T08:20:10.622Z" }
+                ]
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["🛡️ 管理员管理"],
+        "summary": "创建管理员",
+        "description": "将普通用户提升为管理员并分配角色。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "account": "2024001", "role_ids": [3] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "用户 张三 已成为管理员", "data": { "id": 1, "account": "2024001", "username": "张三", "role_names": ["审核员"], "role_ids": [3], "is_active": 1 } } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "该用户已是超管" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "用户不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/admins/{admin_id}": {
+      "delete": {
+        "tags": ["🛡️ 管理员管理"],
+        "summary": "移除管理员",
+        "description": "解除所有角色关联，降为普通学员。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "admin_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "已移除 张三 的管理员身份", "data": null } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "不能移除自己的管理员身份" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "管理员不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/lab": {
+      "get": {
+        "tags": ["⚙️ 实验室配置"],
+        "summary": "获取实验室配置",
+        "description": "若无记录返回默认空结构。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "实验室配置",
+            "content": {
+              "application/json": {
+                "example": { "id": 1, "name": "204实验室", "intro": "人工智能与大数据实验室", "address": "实验楼A栋301", "contact": "张老师", "created_at": "2026-05-31T09:16:48.932Z", "updated_at": "2026-05-31T09:16:48.932Z" }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      },
+      "put": {
+        "tags": ["⚙️ 实验室配置"],
+        "summary": "更新实验室配置",
+        "description": "update_or_create 保证单例。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "name": "204实验室", "intro": "人工智能与大数据实验室", "address": "实验楼A栋301", "contact": "张老师" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "实验室配置保存成功", "data": { "id": 1, "name": "204实验室", "intro": "人工智能与大数据实验室", "address": "实验楼A栋301", "contact": "张老师" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "非管理员" } } } }
+        }
+      }
+    },
+    "/api/admin/system/config": {
+      "get": {
+        "tags": ["⚙️ 系统设置"],
+        "summary": "获取系统配置",
+        "description": "报名开关、维护模式等。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "系统配置",
+            "content": {
+              "application/json": {
+                "example": { "application_open": true, "maintenance_mode": false }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/system/application-toggle": {
+      "put": {
+        "tags": ["⚙️ 系统设置"],
+        "summary": "切换报名通道",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "open": false }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "报名通道已关闭", "data": { "application_open": false, "maintenance_mode": false } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/system/cache": {
+      "delete": {
+        "tags": ["⚙️ 系统设置"],
+        "summary": "清除系统缓存",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "缓存已清除", "data": null } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/lab-news": {
+      "get": {
+        "tags": ["📰 新闻公告"],
+        "summary": "获取新闻列表",
+        "description": "按状态筛选（draft/published/withdrawn）及关键词搜索。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "新闻列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "title": "2026年实验室招新通知", "content": "实验室将于9月启动招新...", "cover": null, "status": "published", "is_pinned": true, "pin_time": "2026-05-31T09:32:33.192Z", "author_name": "超级管理员", "author_id": 5, "published_at": "2026-05-31T09:32:32.978Z", "created_at": "2026-05-31T09:32:32.674Z", "updated_at": "2026-05-31T09:32:33.192Z" }
+                  ],
+                  "count": 2
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["📰 新闻公告"],
+        "summary": "发布/保存草稿",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "2026年实验室招新通知", "content": "实验室将于9月启动招新，请同学们关注...", "status": "published" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "新闻已发布", "data": { "id": 3, "title": "2026年实验室招新通知", "status": "published", "is_pinned": false, "author_name": "超级管理员", "published_at": "2026-05-31T10:00:00.000Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/lab-news/{news_id}": {
+      "put": {
+        "tags": ["📰 新闻公告"],
+        "summary": "编辑新闻",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "news_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "更新后的标题", "content": "更新后的内容...", "status": "published" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "新闻已更新", "data": { "id": 1, "title": "更新后的标题", "status": "published", "is_pinned": false, "author_name": "超级管理员", "updated_at": "2026-05-31T10:00:00.000Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "新闻不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/lab-news/{news_id}/publish": {
+      "put": {
+        "tags": ["📰 新闻公告"],
+        "summary": "发布或撤回",
+        "description": "状态机：draft→published→withdrawn→published。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "news_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "新闻已发布", "data": { "id": 1, "status": "published", "published_at": "2026-05-31T10:00:00.000Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "新闻不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/lab-news/{news_id}/pin": {
+      "put": {
+        "tags": ["📰 新闻公告"],
+        "summary": "切换置顶状态",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "news_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "已置顶", "data": { "id": 1, "is_pinned": true, "pin_time": "2026-05-31T10:00:00.000Z" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "新闻不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/faqs": {
+      "get": {
+        "tags": ["❓ FAQ管理"],
+        "summary": "获取 FAQ 列表",
+        "description": "支持按状态筛选和关键词搜索。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "FAQ 列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "title": "如何报名实验室?", "content": "我想加入实验室，请问报名流程是什么？", "answer": "请关注实验室官网的招新通知", "status": "answered", "user_name": "超级管理员", "answered_by_name": "超级管理员", "sort_order": 0, "created_at": "2026-05-31T09:32:45.876Z", "updated_at": "2026-05-31T09:32:45.876Z" }
+                  ],
+                  "count": 2
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["❓ FAQ管理"],
+        "summary": "新增 FAQ",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "实验室有哪些研究方向?", "content": "请问实验室主要做什么？", "answer": "实验室主要研究AI、大数据和物联网方向", "status": "answered" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "FAQ 创建成功", "data": { "id": 3, "title": "实验室有哪些研究方向?", "status": "answered", "user_name": "超级管理员", "answered_by_name": "超级管理员" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/faqs/{faq_id}": {
+      "put": {
+        "tags": ["❓ FAQ管理"],
+        "summary": "更新 FAQ",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "faq_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "更新后的问题", "content": "更新后的内容", "answer": "更新后的答案", "status": "answered" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "FAQ 已更新", "data": { "id": 1, "title": "更新后的问题", "status": "answered" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "FAQ 不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/faqs/batch-sort": {
+      "post": {
+        "tags": ["❓ FAQ管理"],
+        "summary": "批量排序 FAQ",
+        "description": "Case/When 单 SQL 更新。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "items": [{ "id": 1, "sort_order": 2 }, { "id": 2, "sort_order": 1 }] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "已更新 2 个 FAQ 的排序", "data": null } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/faqs/batch-delete": {
+      "post": {
+        "tags": ["❓ FAQ管理"],
+        "summary": "批量软删除 FAQ",
+        "description": "更新 is_deleted=True 和 deleted_at。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "ids": [1, 2] }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "已删除 2 个 FAQ", "data": null } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/training-weeks": {
+      "get": {
+        "tags": ["📅 培训管理"],
+        "summary": "获取培训周次列表",
+        "description": "包含讲师/助教信息。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "is_published", "in": "query", "required": false, "schema": { "type": "boolean" } }],
+        "responses": {
+          "200": {
+            "description": "周次列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "week_name": "第一周-Python基础", "start_date": "2026-07-01", "end_date": "2026-07-07", "description": "Python基础语法培训", "is_published": true, "published_at": "2026-05-31T09:38:31.515Z", "instructor_ids": [5], "instructor_names": ["超级管理员"], "created_at": "2026-05-31T09:38:31.515Z" }
+                  ],
+                  "count": 2
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["📅 培训管理"],
+        "summary": "创建培训周次",
+        "description": "结束日期必须晚于开始日期。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "week_name": "第三周-数据库设计", "start_date": "2026-07-15", "end_date": "2026-07-21", "description": "MySQL数据库设计与优化", "is_published": true }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "培训周次创建成功", "data": { "id": 3, "week_name": "第三周-数据库设计", "start_date": "2026-07-15", "end_date": "2026-07-21", "is_published": true, "instructor_ids": [], "instructor_names": [] } } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "结束日期必须晚于开始日期" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/training-weeks/{week_id}/assignments": {
+      "post": {
+        "tags": ["📅 培训管理"],
+        "summary": "分配讲师/助教",
+        "description": "replace=true 全量覆盖，false 增量追加。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "week_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "user_ids": [5], "replace": true }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "讲师/助教分配成功", "data": { "id": 1, "week_name": "第一周-Python基础", "instructor_ids": [5], "instructor_names": ["超级管理员"] } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "培训周次不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/training-weeks/{week_id}/attendance": {
+      "get": {
+        "tags": ["📅 培训管理"],
+        "summary": "获取签到统计",
+        "description": "应到/实到/缺席名单，用 annotate 计算。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "week_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "签到统计",
+            "content": {
+              "application/json": {
+                "example": { "total_count": 30, "present_count": 28, "absent_list": [{ "user_id": 1, "user_name": "张三" }] }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "培训周次不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/training-notifications": {
+      "get": {
+        "tags": ["📅 培训管理"],
+        "summary": "获取通知列表",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "status", "in": "query", "required": false, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "通知列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "title": "第一周培训即将开始", "content": "请同学们做好准备", "status": "sent", "training_week_name": "第一周-Python基础", "created_by_name": "超级管理员", "send_time_type": "immediate", "scheduled_time": null, "sent_at": "2026-05-31T09:38:31.852Z", "created_at": "2026-05-31T09:38:31.853Z" }
+                  ],
+                  "count": 1
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["📅 培训管理"],
+        "summary": "发布通知",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "第二周培训通知", "content": "Django框架培训即将开始", "training_week_id": 2, "send_time_type": "immediate" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "通知已发布", "data": { "id": 2, "title": "第二周培训通知", "status": "sent", "training_week_name": "第二周-Django框架", "created_by_name": "超级管理员" } } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/tasks": {
+      "get": {
+        "tags": ["📅 培训管理"],
+        "summary": "获取作业列表",
+        "description": "支持按周次筛选。提交率在数据库层计算。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "training_week_id", "in": "query", "required": false, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "作业列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "title": "Python基础作业1", "description": "完成Python基础练习题", "training_week_id": 1, "training_week_name": "第一周-Python基础", "deadline": "2026-07-10T23:59:00+08:00", "created_by_name": "超级管理员", "submission_count": 5, "total_students": 30, "submission_rate": 16.7, "created_at": "2026-05-31T09:38:44.561Z" }
+                  ],
+                  "count": 2
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      },
+      "post": {
+        "tags": ["📅 培训管理"],
+        "summary": "发布作业",
+        "description": "截止时间必须晚于当前时间。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": { "title": "Python基础作业2", "description": "完成进阶练习题", "training_week_id": 1, "deadline": "2026-07-15 23:59" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "content": { "application/json": { "example": { "code": 200, "message": "作业发布成功", "data": { "id": 2, "title": "Python基础作业2", "training_week_name": "第一周-Python基础", "deadline": "2026-07-15T23:59:00+08:00", "created_by_name": "超级管理员" } } } } },
+          "400": { "content": { "application/json": { "example": { "detail": "截止时间必须晚于当前时间" } } } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/tasks/{task_id}/submissions": {
+      "get": {
+        "tags": ["📅 培训管理"],
+        "summary": "获取作业提交列表",
+        "description": "含提交人信息。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "task_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "提交列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 1, "user_id": 1, "user_name": "张三", "content": "这是我的作业提交", "attachment": null, "score": 95, "comment": "完成得很好", "status": "corrected", "submitted_at": "2026-07-05T10:00:00Z" }
+                  ],
+                  "count": 5
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } },
+          "404": { "content": { "application/json": { "example": { "detail": "作业不存在" } } } }
+        }
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "tags": ["📋 审计日志"],
+        "summary": "获取审计日志",
+        "description": "支持按操作人、模块、时间范围、Action 类型筛选。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "user_id", "in": "query", "required": false, "schema": { "type": "integer" } },
+          { "name": "module", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "action", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date_from", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date_to", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "审计日志列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    { "id": 15, "user_id": 5, "user_name": "超级管理员", "action": "UPDATE", "action_display": "修改", "module": "培训管理", "target_id": null, "target_type": "Assignment", "ip_address": "127.0.0.1", "details": null, "created_at": "2026-05-31T09:38:44.687Z" }
+                  ],
+                  "count": 23
+                }
+              }
+            }
+          },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    },
+    "/api/admin/audit-logs/export": {
+      "get": {
+        "tags": ["📋 审计日志"],
+        "summary": "导出审计日志 Excel",
+        "description": "对敏感字段进行掩码处理。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Excel 文件下载", "content": { "application/octet-stream": {} } },
+          "403": { "content": { "application/json": { "example": { "detail": "权限不足" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "`Authorization: Bearer <your_token>`"
+      }
+    },
+    "schemas": {
+      "LoginInput": {
+        "type": "object",
+        "required": ["account", "password"],
+        "properties": {
+          "account": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "example": "admin123" },
+          "remember_me": { "type": "boolean", "default": false }
+        }
+      },
+      "DepartmentIn": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100, "example": "人工智能研发部" },
+          "intro": { "type": "string", "nullable": true, "example": "专注AI算法研究" },
+          "tech_stack": { "type": "string", "nullable": true, "example": "Python/PyTorch" },
+          "manager_id": { "type": "integer", "nullable": true, "example": 5 },
+          "sort_order": { "type": "integer", "default": 0, "example": 1 }
+        }
+      }
+    }
+  }
+}

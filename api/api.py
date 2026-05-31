@@ -6,7 +6,20 @@ from django.http import HttpRequest
 from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
-from .auth_utils import api_response, auth_bearer
+from api.admin_applications import router as admin_applications_router
+from api.admin_audit_logs import router as admin_audit_logs_router
+from api.admin_departments import router as admin_departments_router
+from api.admin_faqs import router as admin_faqs_router
+from api.admin_lab import router as admin_lab_router
+from api.admin_news import router as admin_news_router
+from api.admin_roles import admin_router as admin_admins_router
+from api.admin_roles import role_router as admin_roles_router
+from api.admin_statistics import router as admin_statistics_router
+from api.admin_system import router as admin_system_router
+from api.admin_training import router as admin_training_router
+from api.admin_users import router as admin_users_router
+from api.auth_utils import api_response, auth_bearer
+from api.models import Enrollment, EnrollmentFile, Question, User
 from .models import (
     CourseEnrollment,
     Enrollment,
@@ -43,6 +56,7 @@ from .schemas import (
     DraftListSchema,
     DraftSchema,
     DraftUpdateSchema,
+    EnrollmentCreateSchema,
     EnrollmentFileSchema,
     EnrollmentListSchema,
     EnrollmentSchema,
@@ -78,6 +92,11 @@ from .schemas import (
     QuestionUpdateSchema,
     RefreshTokenInput,
     SendActivationCodeInput,
+    UpdateInfoInput,
+    VerifyActivationCodeInput,
+)
+from api.services import (
+    AuthService,
     TrainingNotificationSchema,
     TrainingStatisticsSchema,
     UnpublishInput,
@@ -117,7 +136,7 @@ auth_router = Router(tags=["认证管理"], auth=auth_bearer)
     summary="用户登录",
     auth=None,
 )
-def login(request, data: LoginInput) -> dict:
+def login(request: HttpRequest, data: LoginInput) -> dict:
     """用户登录接口."""
     result = AuthService.login(
         account=data.account,
@@ -133,7 +152,7 @@ def login(request, data: LoginInput) -> dict:
     summary="发送激活码",
     auth=None,
 )
-def send_activation_code(request, data: SendActivationCodeInput) -> dict:
+def send_activation_code(request: HttpRequest, data: SendActivationCodeInput) -> dict:
     """发送激活码到用户邮箱."""
     AuthService.send_activation_code(account=data.account)
     return api_response(msg="激活码已发送，请查看邮箱（或服务器日志）")
@@ -145,7 +164,7 @@ def send_activation_code(request, data: SendActivationCodeInput) -> dict:
     summary="验证激活码",
     auth=None,
 )
-def verify_activation_code(request, data: VerifyActivationCodeInput) -> dict:
+def verify_activation_code(request: HttpRequest, data: VerifyActivationCodeInput) -> dict:
     """验证激活码以激活账号."""
     AuthService.verify_activation_code(
         account=data.account,
@@ -159,7 +178,7 @@ def verify_activation_code(request, data: VerifyActivationCodeInput) -> dict:
     response={200: ApiResponseSchema},
     summary="用户登出",
 )
-def logout(request, data: RefreshTokenInput) -> dict:
+def logout(request: HttpRequest, data: RefreshTokenInput) -> dict:
     """用户登出，将 Refresh Token 加入黑名单."""
     AuthService.logout(refresh_token=data.refresh_token)
     return api_response(msg="登出成功")
@@ -170,7 +189,7 @@ def logout(request, data: RefreshTokenInput) -> dict:
     response={200: ApiResponseSchema},
     summary="获取当前用户信息",
 )
-def get_user_info(request) -> dict:
+def get_user_info(request: HttpRequest) -> dict:
     """获取当前登录用户的完整信息."""
     user = request.auth
     user_info = AuthService.get_user_info(user)
@@ -182,7 +201,7 @@ def get_user_info(request) -> dict:
     response={200: ApiResponseSchema},
     summary="修改个人资料",
 )
-def update_info(request, data: UpdateInfoInput) -> dict:
+def update_info(request: HttpRequest, data: UpdateInfoInput) -> dict:
     """修改个人资料，可选同时修改密码."""
     user = request.auth
     AuthService.update_info(
@@ -201,7 +220,7 @@ def update_info(request, data: UpdateInfoInput) -> dict:
     response={200: ApiResponseSchema},
     summary="修改密码",
 )
-def change_password(request, data: ChangePasswordInput) -> dict:
+def change_password(request: HttpRequest, data: ChangePasswordInput) -> dict:
     """修改密码（需提供旧密码验证）."""
     user = request.auth
     AuthService.change_password(
@@ -219,7 +238,7 @@ def change_password(request, data: ChangePasswordInput) -> dict:
     summary="刷新 Access Token",
     auth=None,
 )
-def refresh_token(request, data: RefreshTokenInput) -> dict:
+def refresh_token(request: HttpRequest, data: RefreshTokenInput) -> dict:
     """使用 Refresh Token 获取新的 Access Token."""
     result = AuthService.refresh_token(refresh_token_str=data.refresh_token)
     return api_response(msg="Token 刷新成功", data=result)
@@ -235,7 +254,7 @@ forgot_password_router = Router(tags=["忘记密码"])
     response={200: ApiResponseSchema},
     summary="发送重置密码验证码",
 )
-def forgot_password_send_code(request, data: ForgotPasswordSendCodeInput) -> dict:
+def forgot_password_send_code(request: HttpRequest, data: ForgotPasswordSendCodeInput) -> dict:
     """验证账号邮箱匹配后发送重置密码验证码."""
     AuthService.forgot_password_send_code(
         account=data.account,
@@ -249,7 +268,7 @@ def forgot_password_send_code(request, data: ForgotPasswordSendCodeInput) -> dic
     response={200: ApiResponseSchema},
     summary="重置密码",
 )
-def forgot_password_reset(request, data: ForgotPasswordResetInput) -> dict:
+def forgot_password_reset(request: HttpRequest, data: ForgotPasswordResetInput) -> dict:
     """验证码校验通过后重置密码."""
     AuthService.forgot_password_reset(
         account=data.account,
@@ -260,6 +279,8 @@ def forgot_password_reset(request, data: ForgotPasswordResetInput) -> dict:
     )
     return api_response(msg="密码重置成功，请重新登录")
 
+
+# ==================== 问题模块路由 ====================
 
 question_router = Router(tags=["问题管理"])
 
@@ -1305,21 +1326,22 @@ def export_enrollments(
     if batch_id:
         queryset = queryset.filter(batch_id=batch_id)
 
-    result = []
-    for e in queryset:
-        result.append({
-            '学号': e.user.account,
-            '姓名': e.user.username,
-            '班级': e.student_class or '',
-            '报考方向': e.exam_direction or '',
-            '部门': e.department,
-            '报考科目': e.course_name,
-            '报名状态': e.get_status_display(),
-            '批次': e.batch.name if e.batch else '',
-            '提交时间': e.submitted_at.strftime('%Y-%m-%d %H:%M') if e.submitted_at else '',
-        })
-
-    return {"data": result, "count": len(result)}
+router.add_router("/user", auth_router)
+router.add_router("/forgot-password", forgot_password_router)
+router.add_router("/questions", question_router)
+router.add_router("/", enrollment_router)
+router.add_router("/admin/departments", admin_departments_router)
+router.add_router("/admin/applications", admin_applications_router)
+router.add_router("/admin/statistics", admin_statistics_router)
+router.add_router("/admin/roles", admin_roles_router)
+router.add_router("/admin/admins", admin_admins_router)
+router.add_router("/admin", admin_lab_router)
+router.add_router("/admin/system", admin_system_router)
+router.add_router("/admin/users", admin_users_router)
+router.add_router("/admin/lab-news", admin_news_router)
+router.add_router("/admin/faqs", admin_faqs_router)
+router.add_router("/admin", admin_training_router)
+router.add_router("/admin/audit-logs", admin_audit_logs_router)
 
 
 # 挂载子路由

@@ -5,6 +5,7 @@ from ninja import NinjaAPI
 
 from api.admin_api import admin_router
 from api.api import router as api_router
+from notice.api import admin_router as notice_admin_router, public_router as notice_public_router
 
 # 创建主 API 实例
 api = NinjaAPI(
@@ -29,6 +30,9 @@ api.add_router("/", api_router)
 
 # 挂载管理员路由到主 API（带 v1 版本）
 api.add_router("/v1/admin", admin_router)
+
+api.add_router("/notice/admin", notice_admin_router)
+api.add_router("/notice/public", notice_public_router)
 
 
 @api.get("/", tags=["Health"], summary="服务健康检查")

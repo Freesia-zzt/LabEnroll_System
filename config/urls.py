@@ -5,6 +5,7 @@ from ninja import NinjaAPI
 
 from api.admin_api import admin_router
 from api.api import router as api_router
+from notice.api import admin_router as notice_admin_router, public_router as notice_public_router
 
 # 创建主 API 实例
 api = NinjaAPI(
@@ -38,6 +39,9 @@ api.add_router("/", api_router)
 # 挂载 v1 路由（仅管理员接口）
 api_v1.add_router("/admin", admin_router)
 
+api.add_router("/notice/admin", notice_admin_router)
+api.add_router("/notice/public", notice_public_router)
+
 
 @api.get("/", tags=["Health"], summary="服务健康检查")
 def health_check(request: HttpRequest) -> dict[str, str]:
@@ -47,8 +51,5 @@ def health_check(request: HttpRequest) -> dict[str, str]:
 
 urlpatterns = [
     path("api/", api.urls),
-<<<<<<< HEAD
-=======
     path("api/v1/", api_v1.urls),
->>>>>>> db5313e9d5c8013878e117ac58726db58711de61
 ]

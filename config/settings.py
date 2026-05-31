@@ -37,6 +37,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "api",
+    "notice",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -160,11 +161,8 @@ X_FRAME_OPTIONS = "DENY"
 # Ninja API 配置
 NINJA_PAGINATION_PER_PAGE = 20
 
-<<<<<<< HEAD
-=======
 AUTH_USER_MODEL = "api.LabUser"
 
->>>>>>> db5313e9d5c8013878e117ac58726db58711de61
 # ==================== JWT 认证配置 ====================
 
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)

@@ -494,9 +494,9 @@ dependencies = [
     { name = "email-validator" },
     { name = "mysqlclient" },
     { name = "pydantic" },
+    { name = "pyjwt" },
     { name = "pymysql" },
     { name = "python-dotenv" },
-    { name = "requests" },
 ]
 
 [package.optional-dependencies]
@@ -551,12 +551,12 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'storage'", specifier = ">=10.0.0" },
     { name = "psycopg2-binary", marker = "extra == 'db'", specifier = ">=2.9.12" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pyjwt", marker = "extra == 'auth'", specifier = ">=2.0.0" },
     { name = "pymysql", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "qiniu", marker = "extra == 'storage'", specifier = ">=7.11.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.0" },
-    { name = "requests", specifier = ">=2.33.1" },
     { name = "xhtml2pdf", marker = "extra == 'pdf'", specifier = ">=0.2.11" },
 ]
 provides-extras = ["db", "redis", "storage", "excel", "pdf", "auth"]
@@ -1487,12 +1487,9 @@ wheels = [
 name = "pymysql"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/81/58d0ac84e1ef3a3843791d6954d94c0b33d526c75eeb1efbce9d0a4c4077/pyjwt-2.13.0.tar.gz", hash = "sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423", size = 107515, upload-time = "2026-05-21T19:54:36.618Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/bc/1c6a92f385940f727daeecf3bacaf186e03875dff57197801046c583bcf0/pymysql-1.2.0.tar.gz", hash = "sha256:6c7b17ca686988104d7426c27895b455cdeea3e9d3ceb1270f0c3704fead8c33", size = 49021, upload-time = "2026-05-19T08:26:22.302Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/5e/ecf12fdb62546d64385c158514e9b2b671f7832108ef2ecd2020ce0af2d1/pyjwt-2.13.0-py3-none-any.whl", hash = "sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728", size = 31274, upload-time = "2026-05-21T19:54:35.362Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/bd/2534e130295c8cfd4f0a2e31623baab7502278f1e97bcfe61db75656a77f/pymysql-1.2.0-py3-none-any.whl", hash = "sha256:62169ce6d5510f08e140c5e7990ee884a9764024e4a9a27b2cc11f1099322ae0", size = 45716, upload-time = "2026-05-19T08:26:20.974Z" },
 ]
 
 [[package]]

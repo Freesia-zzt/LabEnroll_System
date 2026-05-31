@@ -25,19 +25,11 @@ api = NinjaAPI(
     },
 )
 
-# 创建 v1 API 实例
-api_v1 = NinjaAPI(
-    title="实验室报名系统 API v1",
-    description="API 版本 v1",
-    version="1.0.0-v1",
-    urls_namespace="api_v1",
-)
-
 # 挂载原有路由
 api.add_router("/", api_router)
 
-# 挂载 v1 路由（仅管理员接口）
-api_v1.add_router("/admin", admin_router)
+# 挂载管理员路由到主 API（带 v1 版本）
+api.add_router("/v1/admin", admin_router)
 
 api.add_router("/notice/admin", notice_admin_router)
 api.add_router("/notice/public", notice_public_router)
@@ -51,5 +43,4 @@ def health_check(request: HttpRequest) -> dict[str, str]:
 
 urlpatterns = [
     path("api/", api.urls),
-    path("api/v1/", api_v1.urls),
 ]

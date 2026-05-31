@@ -132,3 +132,9 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Scripts
+create_admin.py
+
+# Git
+.gitignore

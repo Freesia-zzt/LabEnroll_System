@@ -280,15 +280,28 @@ class LabUserManager(BaseUserManager):
 class Department(models.Model):
     """部门表."""
 
-    name = models.CharField(max_length=100, verbose_name="部门名称")
+    name = models.CharField(max_length=100, unique=True, verbose_name="部门名称")
     intro = models.TextField(blank=True, null=True, verbose_name="部门介绍")
     tech_stack = models.CharField(max_length=255, blank=True, null=True, verbose_name="技术栈")
+    manager = models.ForeignKey(
+        "LabUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_departments",
+        verbose_name="负责人",
+    )
+    sort_order = models.IntegerField(default=0, verbose_name="排序顺序")
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
         verbose_name = "部门"
         verbose_name_plural = "部门"
+        ordering = ["sort_order", "name"]
 
     def __str__(self) -> str:
         return self.name
@@ -302,7 +315,17 @@ class LabUser(AbstractBaseUser, PermissionsMixin):
     phone = models.CharField(max_length=11, blank=True, null=True, verbose_name="手机号")
     email = models.EmailField(blank=True, null=True, verbose_name="邮箱")
     is_active = models.IntegerField(default=0, verbose_name="是否激活(0未激活/1已激活)")
-    role = models.IntegerField(default=1, verbose_name="角色(1=学员, 2=管理员)")
+    role = models.IntegerField(
+        default=1,
+        choices=[
+            (1, "学员"),
+            (2, "超管"),
+            (3, "管理员"),
+            (4, "审核员"),
+            (5, "内容编辑"),
+        ],
+        verbose_name="角色(1=学员, 2=超管, 3=管理员, 4=审核员, 5=编辑)",
+    )
     department = models.ForeignKey(
         Department,
         on_delete=models.SET_NULL,
@@ -313,6 +336,8 @@ class LabUser(AbstractBaseUser, PermissionsMixin):
     last_login_at = models.DateTimeField(null=True, blank=True, verbose_name="最后登录时间")
     activation_code = models.CharField(max_length=6, null=True, blank=True, verbose_name="6位激活码")
     activation_expire = models.DateTimeField(null=True, blank=True, verbose_name="激活码过期时间")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -330,7 +355,7 @@ class LabUser(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_staff(self) -> bool:
-        return self.role == 2
+        return self.role >= 2
 
 
 class LabConfig(models.Model):
@@ -354,10 +379,22 @@ class LabConfig(models.Model):
 class LabNews(models.Model):
     """新闻公告表."""
 
+    class StatusChoices(models.TextChoices):
+        DRAFT = "draft", "草稿"
+        PUBLISHED = "published", "已发布"
+        WITHDRAWN = "withdrawn", "已撤回"
+
     title = models.CharField(max_length=200, verbose_name="新闻标题")
     content = models.TextField(verbose_name="新闻内容")
     cover = models.CharField(max_length=500, blank=True, null=True, verbose_name="封面图")
-    is_top = models.IntegerField(default=0, verbose_name="是否置顶(0否/1是)")
+    status = models.CharField(
+        max_length=20,
+        choices=StatusChoices.choices,
+        default=StatusChoices.DRAFT,
+        verbose_name="状态",
+    )
+    is_pinned = models.BooleanField(default=False, verbose_name="是否置顶")
+    pin_time = models.DateTimeField(null=True, blank=True, verbose_name="置顶时间")
     author = models.ForeignKey(
         LabUser,
         on_delete=models.CASCADE,
@@ -365,13 +402,15 @@ class LabNews(models.Model):
         verbose_name="作者",
     )
     published_at = models.DateTimeField(null=True, blank=True, verbose_name="发布时间")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
         verbose_name = "新闻公告"
         verbose_name_plural = "新闻公告"
-        ordering = ["-is_top", "-published_at"]
+        ordering = ["-is_pinned", "-pin_time", "-created_at"]
 
     def __str__(self) -> str:
         return self.title
@@ -389,6 +428,8 @@ class RegistrationConfig(models.Model):
         verbose_name="所属部门",
     )
     is_open = models.IntegerField(default=1, verbose_name="是否开启报名(0关/1开)")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -432,6 +473,8 @@ class ApplicationForm(models.Model):
     email = models.EmailField(blank=True, null=True, verbose_name="邮箱")
     director_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="导员姓名")
     sign_reason = models.TextField(verbose_name="报名理由")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -512,13 +555,16 @@ class FAQ(models.Model):
         verbose_name="回答者",
     )
     answered_at = models.DateTimeField(null=True, blank=True, verbose_name="回答时间")
+    sort_order = models.IntegerField(default=0, verbose_name="排序权重")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
         verbose_name = "FAQ问题"
         verbose_name_plural = "FAQ问题"
-        ordering = ["-created_at"]
+        ordering = ["sort_order", "-created_at"]
 
     def __str__(self) -> str:
         return self.title
@@ -533,6 +579,12 @@ class TrainingWeek(models.Model):
     description = models.TextField(blank=True, null=True, verbose_name="描述")
     is_published = models.BooleanField(default=False, verbose_name="是否发布")
     published_at = models.DateTimeField(null=True, blank=True, verbose_name="发布时间")
+    instructors = models.ManyToManyField(
+        "LabUser",
+        blank=True,
+        related_name="teaching_weeks",
+        verbose_name="讲师/助教",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -575,6 +627,13 @@ class TrainingNotification(models.Model):
         default="draft",
         verbose_name="状态",
     )
+    training_week = models.ForeignKey(
+        "TrainingWeek",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="关联周次",
+    )
     created_by = models.ForeignKey(
         LabUser,
         on_delete=models.CASCADE,
@@ -590,6 +649,110 @@ class TrainingNotification(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class Assignment(models.Model):
+    """作业任务表（培训周次关联的作业）.每个培训周次可以发布多个作业。"""
+
+    title = models.CharField(max_length=200, verbose_name="作业标题")
+    description = models.TextField(blank=True, null=True, verbose_name="作业描述")
+    training_week = models.ForeignKey(
+        TrainingWeek,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+        verbose_name="关联周次",
+    )
+    deadline = models.DateTimeField(verbose_name="截止时间")
+    created_by = models.ForeignKey(
+        LabUser,
+        on_delete=models.CASCADE,
+        related_name="created_assignments",
+        verbose_name="发布人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "作业任务"
+        verbose_name_plural = "作业任务"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.title}({self.training_week.week_name})"
+
+
+class AssignmentSubmission(models.Model):
+    """作业提交记录表."""
+
+    STATUS_CHOICES = [
+        ("submitted", "已提交"),
+        ("pending", "待批改"),
+        ("corrected", "已批改"),
+    ]
+
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+        verbose_name="所属作业",
+    )
+    user = models.ForeignKey(
+        LabUser,
+        on_delete=models.CASCADE,
+        related_name="assignment_submissions",
+        verbose_name="提交人",
+    )
+    content = models.TextField(blank=True, null=True, verbose_name="提交内容")
+    attachment = models.CharField(max_length=500, blank=True, null=True, verbose_name="附件路径")
+    score = models.IntegerField(null=True, blank=True, verbose_name="分数")
+    comment = models.TextField(blank=True, null=True, verbose_name="批改评语")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="submitted",
+        verbose_name="提交状态",
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True, verbose_name="提交时间")
+
+    class Meta:
+        verbose_name = "作业提交"
+        verbose_name_plural = "作业提交"
+        unique_together = ("assignment", "user")
+
+    def __str__(self) -> str:
+        return f"{self.user.username}-{self.assignment.title}"
+
+
+class Attendance(models.Model):
+    """培训签到表."""
+
+    training_week = models.ForeignKey(
+        TrainingWeek,
+        on_delete=models.CASCADE,
+        related_name="attendance_records",
+        verbose_name="关联周次",
+    )
+    user = models.ForeignKey(
+        LabUser,
+        on_delete=models.CASCADE,
+        related_name="attendance_records",
+        verbose_name="签到人",
+    )
+    check_in_time = models.DateTimeField(auto_now_add=True, verbose_name="签到时间")
+    status = models.CharField(
+        max_length=20,
+        choices=[("present", "已签到"), ("absent", "未签到"), ("late", "迟到")],
+        default="present",
+        verbose_name="签到状态",
+    )
+
+    class Meta:
+        verbose_name = "培训签到"
+        verbose_name_plural = "培训签到"
+        unique_together = ("training_week", "user")
+
+    def __str__(self) -> str:
+        return f"{self.user.username}-{self.training_week.week_name}-{self.get_status_display()}"
 
 
 class Homework(models.Model):
@@ -970,3 +1133,155 @@ class EnrollmentFile(models.Model):
 
     def __str__(self) -> str:
         return self.file_name
+
+
+# ==============================================================================
+# 系统设置模型
+# ==============================================================================
+
+
+class SystemConfig(models.Model):
+    """系统配置表（单例表，只应有一条记录）."""
+
+    application_open = models.BooleanField(default=True, verbose_name="报名通道是否开启")
+    maintenance_mode = models.BooleanField(default=False, verbose_name="维护模式")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "系统配置"
+        verbose_name_plural = "系统配置"
+
+    def __str__(self) -> str:
+        return f"系统配置(报名={'开' if self.application_open else '关'}, 维护={'开' if self.maintenance_mode else '关'})"
+
+
+# ==============================================================================
+# RBAC 权限模型
+# ==============================================================================
+
+
+class Role(models.Model):
+    """角色表."""
+
+    name = models.CharField(max_length=50, unique=True, verbose_name="角色名称")
+    code = models.CharField(max_length=50, unique=True, verbose_name="角色编码")
+    description = models.TextField(blank=True, null=True, verbose_name="角色描述")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "角色"
+        verbose_name_plural = "角色"
+        db_table = "roles"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Permission(models.Model):
+    """权限表."""
+
+    name = models.CharField(max_length=100, verbose_name="权限名称")
+    code = models.CharField(max_length=100, unique=True, verbose_name="权限编码")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "权限"
+        verbose_name_plural = "权限"
+        db_table = "permissions"
+
+    def __str__(self) -> str:
+        return f"{self.name}({self.code})"
+
+
+class RolePermission(models.Model):
+    """角色-权限关联表."""
+
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="role_permissions", verbose_name="角色")
+    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name="role_permissions", verbose_name="权限")
+
+    class Meta:
+        verbose_name = "角色权限"
+        verbose_name_plural = "角色权限"
+        db_table = "role_permissions"
+        unique_together = ("role", "permission")
+
+    def __str__(self) -> str:
+        return f"{self.role.name} - {self.permission.name}"
+
+
+class UserRole(models.Model):
+    """用户-角色关联表（支持多角色）."""
+
+    user = models.ForeignKey(
+        LabUser,
+        on_delete=models.CASCADE,
+        related_name="user_roles",
+        verbose_name="用户",
+    )
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="user_roles",
+        verbose_name="角色",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="分配时间")
+
+    class Meta:
+        verbose_name = "用户角色"
+        verbose_name_plural = "用户角色"
+        db_table = "user_roles"
+        unique_together = ("user", "role")
+
+    def __str__(self) -> str:
+        return f"{self.user.username} - {self.role.name}"
+
+
+# ==============================================================================
+# 审计日志模型
+# ==============================================================================
+
+
+class AuditLog(models.Model):
+    """审计日志表.
+
+    记录管理员的所有敏感操作，用于安全审计和操作追溯。
+    """
+
+    class ActionChoices(models.TextChoices):
+        CREATE = "CREATE", "新增"
+        UPDATE = "UPDATE", "修改"
+        DELETE = "DELETE", "删除"
+        LOGIN = "LOGIN", "登录"
+        EXPORT = "EXPORT", "导出"
+
+    user = models.ForeignKey(
+        LabUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+        verbose_name="操作人",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=ActionChoices.choices,
+        verbose_name="操作类型",
+    )
+    module = models.CharField(max_length=100, verbose_name="操作模块")
+    target_id = models.CharField(max_length=50, null=True, blank=True, verbose_name="被操作对象ID")
+    target_type = models.CharField(max_length=100, null=True, blank=True, verbose_name="被操作对象模型")
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="操作IP")
+    details = models.JSONField(null=True, blank=True, verbose_name="操作详情/变更差异")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="操作时间")
+
+    class Meta:
+        verbose_name = "审计日志"
+        verbose_name_plural = "审计日志"
+        db_table = "audit_logs"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        user_info = self.user.username if self.user else "未知用户"
+        return f"{user_info} - {self.get_action_display()} - {self.module}"

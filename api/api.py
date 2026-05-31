@@ -4,6 +4,18 @@ from django.http import HttpRequest
 from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
+from api.admin_applications import router as admin_applications_router
+from api.admin_audit_logs import router as admin_audit_logs_router
+from api.admin_departments import router as admin_departments_router
+from api.admin_faqs import router as admin_faqs_router
+from api.admin_lab import router as admin_lab_router
+from api.admin_news import router as admin_news_router
+from api.admin_roles import admin_router as admin_admins_router
+from api.admin_roles import role_router as admin_roles_router
+from api.admin_statistics import router as admin_statistics_router
+from api.admin_system import router as admin_system_router
+from api.admin_training import router as admin_training_router
+from api.admin_users import router as admin_users_router
 from api.auth_utils import api_response, auth_bearer
 from api.models import Enrollment, EnrollmentFile, Question, User
 from api.schemas import (
@@ -896,3 +908,15 @@ router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 router.add_router("/", enrollment_router)
+router.add_router("/admin/departments", admin_departments_router)
+router.add_router("/admin/applications", admin_applications_router)
+router.add_router("/admin/statistics", admin_statistics_router)
+router.add_router("/admin/roles", admin_roles_router)
+router.add_router("/admin/admins", admin_admins_router)
+router.add_router("/admin", admin_lab_router)
+router.add_router("/admin/system", admin_system_router)
+router.add_router("/admin/users", admin_users_router)
+router.add_router("/admin/lab-news", admin_news_router)
+router.add_router("/admin/faqs", admin_faqs_router)
+router.add_router("/admin", admin_training_router)
+router.add_router("/admin/audit-logs", admin_audit_logs_router)

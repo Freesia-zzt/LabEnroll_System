@@ -1,27 +1,71 @@
 """API 路由定义."""
 
+from typing import List, Optional
+
 from django.http import HttpRequest
 from ninja import File, Router, UploadedFile
 from ninja.errors import HttpError
 
 from .auth_utils import api_response, auth_bearer
+from .models import (
+    CourseEnrollment,
+    Enrollment,
+    LabUser,
+    User,
+)
 from .schemas import (
+    AdmitInput,
+    AdmissionDetailSchema,
+    AdmissionRecordSchema,
+    AdmissionStatsSchema,
     ApiResponseSchema,
+    ArchiveCreateInput,
+    ArchiveDetailSchema,
+    ArchiveSchema,
+    ArchiveUpdateInput,
+    AssignmentGradingSchema,
+    AssignmentReviewSchema,
+    AssignmentSubmissionCreateSchema,
+    AssignmentSubmissionSchema,
+    BatchCreateInput,
+    BatchDetailSchema,
+    BatchSchema,
+    BatchUpdateInput,
+    BatchAdmitInput,
+    BatchPublishInput,
     ChangePasswordInput,
-    ForgotPasswordSendCodeInput,
-    ForgotPasswordResetInput,
-    LoginInput,
-    MessageSchema,
-    RefreshTokenInput,
-    SendActivationCodeInput,
-    UpdateInfoInput,
-    VerifyActivationCodeInput,
-    EnrollmentSchema,
-    EnrollmentCreateSchema,
+    CourseDetailSchema,
+    CourseListSchema,
+    CourseReviewCreateSchema,
+    CourseReviewSchema,
+    ChapterProgressSchema,
+    DraftCreateSchema,
+    DraftListSchema,
+    DraftSchema,
+    DraftUpdateSchema,
+    EnrollmentFileSchema,
     EnrollmentListSchema,
     EnrollmentSchema,
+    EnrollmentCreateSchema,
+    EnrollmentStatsSchema,
     FileUploadResponseSchema,
+    ForgotPasswordResetInput,
+    ForgotPasswordSendCodeInput,
+    GlobalStatsSchema,
+    ImportResultSchema,
+    LearningProgressSchema,
+    LoginInput,
     MessageSchema,
+    PaginatedAdmissionList,
+    PaginatedArchiveList,
+    PaginatedBatchList,
+    PaginatedCourseList,
+    PaginatedEnrollmentList,
+    PaginatedNotificationList,
+    PaginatedPendingAssignmentList,
+    PaginatedPublishedList,
+    PublishedRecordSchema,
+    PublishInput,
     QuestionBriefSchema,
     QuestionCreateSchema,
     QuestionDetailSchema,
@@ -29,17 +73,33 @@ from .schemas import (
     QuestionListSchema,
     QuestionReplyCreateSchema,
     QuestionReplySchema,
+    QuestionStatsSchema,
     QuestionStatusUpdateSchema,
     QuestionUpdateSchema,
+    RefreshTokenInput,
+    SendActivationCodeInput,
+    TrainingNotificationSchema,
+    TrainingStatisticsSchema,
+    UnpublishInput,
+    UpdateInfoInput,
+    VerifyActivationCodeInput,
+    YearStatsSchema,
 )
 from .services import (
+    AdmissionService,
+    AssignmentService,
     AuthService,
-    EnrollmentService,
+    BatchService,
+    CourseService,
+    CourseReviewService,
     EnrollmentDraftService,
     EnrollmentFileService,
     EnrollmentService,
+    LearningProgressService,
+    NotificationService,
     QuestionReplyService,
     QuestionService,
+    TrainingStatisticsService,
 )
 
 router = Router(tags=["API"])
@@ -256,8 +316,8 @@ def cancel_enrollment(request, enrollment_id: int):
 
 # ==================== 草稿相关 API ====================
 
-@enrollment_router.post("/drafts", response=EnrollmentDraftSchema)
-def save_draft(request, data: EnrollmentDraftCreateSchema):
+@enrollment_router.post("/drafts", response=DraftSchema)
+def save_draft(request, data: DraftCreateSchema):
     """保存表单草稿.
 
     POST /api/v1/drafts
@@ -266,7 +326,7 @@ def save_draft(request, data: EnrollmentDraftCreateSchema):
     draft = EnrollmentDraftService.create_draft(user_id, data.dict())
     return draft
 
-@enrollment_router.get("/drafts", response=PaginatedDraftList)
+@enrollment_router.get("/drafts", response=DraftListSchema)
 def get_draft_list(
     request,
     page: int = 1,
@@ -280,7 +340,7 @@ def get_draft_list(
     result = EnrollmentDraftService.get_drafts_by_user(user.id, page, page_size)
     return result
 
-@enrollment_router.get("/drafts/{draft_id}", response=EnrollmentDraftSchema)
+@enrollment_router.get("/drafts/{draft_id}", response=DraftSchema)
 def get_draft(request, draft_id: int):
     """获取单个草稿详情.
 
@@ -291,8 +351,8 @@ def get_draft(request, draft_id: int):
         raise HttpError(404, "草稿不存在")
     return draft
 
-@enrollment_router.put("/drafts/{draft_id}", response=EnrollmentDraftSchema)
-def update_draft(request, draft_id: int, data: EnrollmentDraftCreateSchema):
+@enrollment_router.put("/drafts/{draft_id}", response=DraftSchema)
+def update_draft(request, draft_id: int, data: DraftCreateSchema):
     """更新草稿（加载并修改草稿）.
 
     PUT /api/v1/drafts/{draft_id}
@@ -932,9 +992,343 @@ def upload_question_file(
     }
 
 
+# ==================== 录取管理 API ====================
+
+admission_router = Router(tags=["录取管理"], auth=auth_bearer)
+
+
+@admission_router.post("/admit", response={200: ApiResponseSchema}, summary="录取报名")
+def admit_enrollment(request, data: AdmitInput) -> dict:
+    """录取报名（单个）.
+
+    仅审核通过的报名可以录取
+    """
+    user = request.auth
+    try:
+        result = AdmissionService.admit_enrollment(
+            enrollment_id=data.enrollment_id,
+            admitted_by=user,
+            notes=data.notes,
+        )
+        return api_response(code=200, msg="录取成功", data=result)
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@admission_router.post("/admit/batch", response={200: ApiResponseSchema}, summary="批量录取报名")
+def batch_admit_enrollments(request, data: BatchAdmitInput) -> dict:
+    """批量录取报名.
+
+    批量将审核通过的报名录取
+    """
+    user = request.auth
+    result = AdmissionService.batch_admit_enrollments(
+        enrollment_ids=data.enrollment_ids,
+        admitted_by=user,
+        notes=data.notes,
+    )
+    return api_response(code=200, msg="批量录取完成", data=result)
+
+
+@admission_router.get("/admissions", response=PaginatedAdmissionList, summary="录取列表")
+def get_admission_list(
+    request,
+    page: int = 1,
+    per_page: int = 20,
+    status: Optional[str] = None,
+) -> dict:
+    """获取录取列表（分页）.
+
+    GET /api/v1/admissions?page=1&per_page=20&status=draft
+    """
+    user = request.auth
+    items, total = AdmissionService.get_admission_list(
+        user_id=user.id,
+        status=status,
+        page=page,
+        per_page=per_page,
+    )
+    last_page = max(1, (total + per_page - 1) // per_page)
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": items,
+    }
+
+
+@admission_router.get("/admissions/{admission_id}", response=AdmissionDetailSchema, summary="录取详情")
+def get_admission_detail(request, admission_id: int) -> dict:
+    """获取录取记录详情."""
+    result = AdmissionService.get_admission_detail(admission_id)
+    if not result:
+        raise HttpError(404, "录取记录不存在")
+    return result
+
+
+@admission_router.post("/admissions/{admission_id}/cancel", response=MessageSchema, summary="取消录取")
+def cancel_admission(request, admission_id: int) -> dict:
+    """取消录取.
+
+    取消已录取的记录
+    """
+    try:
+        AdmissionService.cancel_admission(admission_id)
+        return {"message": "录取已取消"}
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+# ==================== 公示管理 API ====================
+
+publish_router = Router(tags=["公示管理"], auth=auth_bearer)
+
+
+@publish_router.post("/publish", response={200: ApiResponseSchema}, summary="公示录取记录")
+def publish_admission(request, data: PublishInput) -> dict:
+    """公示录取记录（单个）."""
+    try:
+        result = AdmissionService.publish_admission(data.admission_id)
+        return api_response(code=200, msg="公示成功", data=result)
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@publish_router.post("/publish/batch", response={200: ApiResponseSchema}, summary="批量公示")
+def batch_publish_admissions(request, data: BatchPublishInput) -> dict:
+    """批量公示录取记录."""
+    result = AdmissionService.batch_publish_admissions(data.admission_ids)
+    return api_response(code=200, msg="批量公示完成", data=result)
+
+
+@publish_router.post("/unpublish", response={200: ApiResponseSchema}, summary="取消公示")
+def unpublish_admission(request, data: UnpublishInput) -> dict:
+    """取消公示."""
+    try:
+        result = AdmissionService.unpublish_admission(data.admission_id)
+        return api_response(code=200, msg="取消公示成功", data=result)
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@publish_router.get("/published", response=PaginatedPublishedList, summary="公示列表")
+def get_published_list(
+    request,
+    page: int = 1,
+    per_page: int = 20,
+) -> dict:
+    """获取已公示列表（公开接口）.
+
+    GET /api/v1/admissions/published?page=1&per_page=20
+    """
+    items, total = AdmissionService.get_published_list(page=page, per_page=per_page)
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": items,
+    }
+
+
+# ==================== 批次管理 API ====================
+
+batch_router = Router(tags=["批次管理"], auth=auth_bearer)
+
+
+@batch_router.post("", response={200: ApiResponseSchema}, summary="创建批次")
+def create_batch(request, data: BatchCreateInput) -> dict:
+    """创建批次."""
+    user = request.auth
+    try:
+        batch = BatchService.create_batch(
+            name=data.name,
+            batch_type=data.batch_type,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            created_by=user,
+            description=data.description,
+            max_enrollments=data.max_enrollments,
+        )
+        return api_response(code=200, msg="批次创建成功", data={
+            "id": batch.id,
+            "name": batch.name,
+        })
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@batch_router.put("/{batch_id}", response={200: ApiResponseSchema}, summary="更新批次")
+def update_batch(request, batch_id: int, data: BatchUpdateInput) -> dict:
+    """更新批次."""
+    try:
+        batch = BatchService.update_batch(
+            batch_id=batch_id,
+            name=data.name,
+            batch_type=data.batch_type,
+            description=data.description,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            status=data.status,
+            max_enrollments=data.max_enrollments,
+        )
+        return api_response(code=200, msg="更新成功", data={
+            "id": batch.id,
+            "name": batch.name,
+        })
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+@batch_router.get("", response=PaginatedBatchList, summary="批次列表")
+def get_batch_list(
+    request,
+    page: int = 1,
+    per_page: int = 20,
+    status: Optional[str] = None,
+    batch_type: Optional[str] = None,
+) -> dict:
+    """获取批次列表（分页）."""
+    items, total = BatchService.get_batch_list(
+        status=status,
+        batch_type=batch_type,
+        page=page,
+        per_page=per_page,
+    )
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": items,
+    }
+
+
+@batch_router.get("/{batch_id}", response=BatchDetailSchema, summary="批次详情")
+def get_batch_detail(request, batch_id: int) -> dict:
+    """获取批次详情."""
+    result = BatchService.get_batch_detail(batch_id)
+    if not result:
+        raise HttpError(404, "批次不存在")
+    return result
+
+
+@batch_router.delete("/{batch_id}", response=MessageSchema, summary="删除批次")
+def delete_batch(request, batch_id: int) -> dict:
+    """删除批次."""
+    try:
+        BatchService.delete_batch(batch_id)
+        return {"message": "批次已删除"}
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
+# ==================== 导入导出 API ====================
+
+export_router = Router(tags=["导入导出"], auth=auth_bearer)
+
+
+@export_router.post("/import", response=ImportResultSchema, summary="导入报名数据")
+def import_enrollments(request, file: UploadedFile = File(...)) -> dict:
+    """批量导入报名数据（Excel/CSV）."""
+    import csv
+    import io
+
+    success = 0
+    failed = 0
+    errors = []
+
+    try:
+        content = file.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(content))
+
+        for row_num, row in enumerate(reader, start=2):
+            try:
+                account = row.get('学号', '').strip()
+                if not account:
+                    errors.append(f"第{row_num}行: 学号不能为空")
+                    failed += 1
+                    continue
+
+                try:
+                    user = LabUser.objects.get(account=account)
+                except LabUser.DoesNotExist:
+                    errors.append(f"第{row_num}行: 学号{account}不存在")
+                    failed += 1
+                    continue
+
+                course_name = row.get('报考科目', '').strip()
+                department = row.get('部门', '').strip()
+                position = row.get('职位', '').strip()
+                student_class = row.get('班级', '').strip() or None
+                exam_direction = row.get('报考方向', '').strip() or None
+
+                if not course_name:
+                    errors.append(f"第{row_num}行: 报考科目不能为空")
+                    failed += 1
+                    continue
+
+                Enrollment.objects.create(
+                    user=user,
+                    course_name=course_name,
+                    department=department,
+                    position=position,
+                    student_class=student_class,
+                    exam_direction=exam_direction,
+                )
+                success += 1
+
+            except Exception as e:
+                errors.append(f"第{row_num}行: {str(e)}")
+                failed += 1
+
+    except Exception as e:
+        raise HttpError(400, f"文件解析失败: {str(e)}")
+
+    return {
+        "total": success + failed,
+        "success": success,
+        "failed": failed,
+        "errors": errors,
+    }
+
+
+@export_router.get("/export", summary="导出报名数据")
+def export_enrollments(
+    request,
+    status: Optional[str] = None,
+    batch_id: Optional[int] = None,
+) -> dict:
+    """导出报名数据."""
+    queryset = Enrollment.objects.select_related('user', 'batch').all()
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if batch_id:
+        queryset = queryset.filter(batch_id=batch_id)
+
+    result = []
+    for e in queryset:
+        result.append({
+            '学号': e.user.account,
+            '姓名': e.user.username,
+            '班级': e.student_class or '',
+            '报考方向': e.exam_direction or '',
+            '部门': e.department,
+            '报考科目': e.course_name,
+            '报名状态': e.get_status_display(),
+            '批次': e.batch.name if e.batch else '',
+            '提交时间': e.submitted_at.strftime('%Y-%m-%d %H:%M') if e.submitted_at else '',
+        })
+
+    return {"data": result, "count": len(result)}
+
+
 # 挂载子路由
 router.add_router("/v1/auth", auth_router)
 router.add_router("/v1/forgot-password", forgot_password_router)
 router.add_router("/v1", enrollment_router)
 router.add_router("/v1/training", training_router)
 router.add_router("/v1/questions", question_router)
+router.add_router("/v1/admissions", admission_router)
+router.add_router("/v1/admissions", publish_router)
+router.add_router("/v1/batch", batch_router)
+router.add_router("/v1/export", export_router)

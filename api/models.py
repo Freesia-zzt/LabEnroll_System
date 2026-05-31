@@ -242,14 +242,19 @@ class Enrollment(models.Model):
         ('pending', '待审核'),
         ('approved', '已通过'),
         ('rejected', '已拒绝'),
+        ('admitted', '已录取'),
+        ('published', '已公示'),
         ('cancelled', '已取消'),
     ]
 
     user = models.ForeignKey('LabUser', on_delete=models.CASCADE, verbose_name="用户")
+    batch = models.ForeignKey('Batch', on_delete=models.SET_NULL, null=True, blank=True, related_name='enrollments', verbose_name="所属批次")
     course_name = models.CharField(max_length=200, verbose_name="课程名称")
     department = models.CharField(max_length=100, verbose_name="部门")
     position = models.CharField(max_length=100, verbose_name="职位")
     reason = models.TextField(verbose_name="报名理由")
+    student_class = models.CharField(max_length=100, blank=True, null=True, verbose_name="班级")
+    exam_direction = models.CharField(max_length=100, blank=True, null=True, verbose_name="报考方向")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="状态")
     submitted_at = models.DateTimeField(auto_now_add=True, verbose_name="提交时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -266,11 +271,14 @@ class Enrollment(models.Model):
 class EnrollmentDraft(models.Model):
     """报名草稿模型."""
     user = models.ForeignKey('LabUser', on_delete=models.CASCADE, verbose_name="用户")
+    batch = models.ForeignKey('Batch', on_delete=models.SET_NULL, null=True, blank=True, related_name='drafts', verbose_name="所属批次")
     course_name = models.CharField(max_length=200, blank=True, verbose_name="课程名称")
     department = models.CharField(max_length=100, blank=True, verbose_name="部门")
     position = models.CharField(max_length=100, blank=True, verbose_name="职位")
     reason = models.TextField(blank=True, verbose_name="报名理由")
     draft_data = models.JSONField(default=dict, verbose_name="草稿数据")
+    student_class = models.CharField(max_length=100, blank=True, null=True, verbose_name="班级")
+    exam_direction = models.CharField(max_length=100, blank=True, null=True, verbose_name="报考方向")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -287,9 +295,10 @@ class EnrollmentFile(models.Model):
     """报名文件模型."""
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, blank=True, null=True, verbose_name="报名")
     draft = models.ForeignKey(EnrollmentDraft, on_delete=models.CASCADE, blank=True, null=True, verbose_name="草稿")
-    file = models.FileField(upload_to='enrollment_files/', verbose_name="文件")
+    batch = models.ForeignKey('Batch', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="所属批次")
+    file = models.FileField(upload_to='enrollment_files/', null=True, blank=True, verbose_name="文件")
     file_name = models.CharField(max_length=255, verbose_name="文件名")
-    file_size = models.BigIntegerField(verbose_name="文件大小")
+    file_size = models.BigIntegerField(default=0, verbose_name="文件大小")
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="上传时间")
 
     class Meta:
@@ -298,6 +307,99 @@ class EnrollmentFile(models.Model):
 
     def __str__(self):
         return self.file_name
+
+
+# ==================== 录取与公示管理模块 ====================
+
+class AdmissionRecord(models.Model):
+    """录取记录表.
+
+    存储报名审核通过后的录取信息，支持公示状态管理。
+    """
+    PUBLISH_CHOICES = [
+        ('draft', '草稿'),
+        ('published', '已公示'),
+        ('unpublished', '已取消公示'),
+    ]
+
+    enrollment = models.OneToOneField(
+        Enrollment,
+        on_delete=models.CASCADE,
+        related_name='admission_record',
+        verbose_name="关联报名",
+    )
+    admitted_by = models.ForeignKey(
+        'LabUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='admitted_records',
+        verbose_name="录取人",
+    )
+    admitted_at = models.DateTimeField(auto_now_add=True, verbose_name="录取时间")
+    publish_status = models.CharField(
+        max_length=20,
+        choices=PUBLISH_CHOICES,
+        default='draft',
+        verbose_name="公示状态",
+    )
+    publish_time = models.DateTimeField(null=True, blank=True, verbose_name="公示时间")
+    notes = models.TextField(blank=True, verbose_name="备注")
+
+    class Meta:
+        verbose_name = "录取记录"
+        verbose_name_plural = "录取记录"
+        ordering = ['-admitted_at']
+
+    def __str__(self):
+        return f"录取-{self.enrollment.user.username}-{self.enrollment.course_name}"
+
+
+# ==================== 批次管理模块 ====================
+
+class Batch(models.Model):
+    """批次管理模型.
+
+    用于管理不同批次的报名，如新生报名、补录报名等。
+    """
+    TYPE_CHOICES = [
+        ('new_student', '新生报名'),
+        ('supplementary', '补录报名'),
+        ('transfer', '转专业报名'),
+        ('other', '其他'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', '草稿'),
+        ('open', '报名中'),
+        ('closed', '已截止'),
+        ('archived', '已归档'),
+    ]
+
+    name = models.CharField(max_length=200, verbose_name="批次名称")
+    batch_type = models.CharField(max_length=50, choices=TYPE_CHOICES, default='new_student', verbose_name="批次类型")
+    description = models.TextField(blank=True, verbose_name="批次说明")
+    start_time = models.DateTimeField(verbose_name="开始时间")
+    end_time = models.DateTimeField(verbose_name="截止时间")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name="状态")
+    max_enrollments = models.IntegerField(default=0, verbose_name="最大报名人数(0为不限)")
+    enrolled_count = models.IntegerField(default=0, verbose_name="已报名人数")
+    created_by = models.ForeignKey(
+        'LabUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_batches',
+        verbose_name="创建人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "批次"
+        verbose_name_plural = "批次"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
 
 
 # ==================== 学员问题管理模块 ====================
@@ -510,6 +612,8 @@ class LabUser(AbstractBaseUser, PermissionsMixin):
         blank=True,
         verbose_name="所属部门",
     )
+    student_class = models.CharField(max_length=100, blank=True, null=True, verbose_name="班级")
+    exam_direction = models.CharField(max_length=100, blank=True, null=True, verbose_name="报考方向")
     last_login_at = models.DateTimeField(null=True, blank=True, verbose_name="最后登录时间")
     activation_code = models.CharField(max_length=6, null=True, blank=True, verbose_name="6位激活码")
     activation_expire = models.DateTimeField(null=True, blank=True, verbose_name="激活码过期时间")

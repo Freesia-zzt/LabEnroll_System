@@ -4,7 +4,8 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from django.db.models import Q, QuerySet
+from django.db.models import Avg, Count, Q, QuerySet
+from django.utils import timezone
 
 from .auth_utils import (
     create_access_token,
@@ -14,6 +15,8 @@ from .auth_utils import (
 )
 from .email_utils import send_activation_code_email, send_forgot_password_code_email
 from .models import (
+    AdmissionRecord,
+    Batch,
     Department,
     Enrollment, EnrollmentDraft, EnrollmentFile,
     Course, Chapter, Courseware, CourseEnrollment, ChapterProgress,
@@ -1239,3 +1242,559 @@ class QuestionReplyService:
             question.status = Question.STATUS_REPLIED
             question.save()
         return reply
+
+
+# ==================== 录取与公示管理服务 ====================
+
+class AdmissionService:
+    """录取管理服务类."""
+
+    @staticmethod
+    def admit_enrollment(enrollment_id: int, admitted_by: 'LabUser', notes: str = "") -> dict:
+        """录取报名.
+
+        Args:
+            enrollment_id: 报名ID
+            admitted_by: 录取人
+            notes: 备注
+
+        Returns:
+            录取结果字典
+
+        Raises:
+            Exception: 校验失败时抛出
+        """
+        try:
+            enrollment = Enrollment.objects.get(id=enrollment_id)
+        except Enrollment.DoesNotExist:
+            raise Exception("报名记录不存在")
+
+        if enrollment.status != 'approved':
+            raise Exception("仅审核通过的报名可以录取")
+
+        if hasattr(enrollment, 'admission_record'):
+            raise Exception("该报名已被录取，不能重复录取")
+
+        admission = AdmissionRecord.objects.create(
+            enrollment=enrollment,
+            admitted_by=admitted_by,
+            notes=notes,
+        )
+
+        enrollment.status = 'admitted'
+        enrollment.save(update_fields=['status', 'updated_at'])
+
+        return {
+            'id': admission.id,
+            'enrollment_id': enrollment.id,
+            'user_name': enrollment.user.username,
+            'course_name': enrollment.course_name,
+            'admitted_at': admission.admitted_at,
+        }
+
+    @staticmethod
+    def batch_admit_enrollments(enrollment_ids: list[int], admitted_by: 'LabUser', notes: str = "") -> dict:
+        """批量录取报名.
+
+        Args:
+            enrollment_ids: 报名ID列表
+            admitted_by: 录取人
+            notes: 备注
+
+        Returns:
+            批量录取结果字典
+        """
+        success_count = 0
+        fail_count = 0
+        fail_reasons = []
+
+        for enrollment_id in enrollment_ids:
+            try:
+                AdmissionService.admit_enrollment(enrollment_id, admitted_by, notes)
+                success_count += 1
+            except Exception as e:
+                fail_count += 1
+                fail_reasons.append({'id': enrollment_id, 'reason': str(e)})
+
+        return {
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'fail_reasons': fail_reasons,
+        }
+
+    @staticmethod
+    def cancel_admission(admission_id: int) -> bool:
+        """取消录取.
+
+        Args:
+            admission_id: 录取记录ID
+
+        Returns:
+            是否成功
+
+        Raises:
+            Exception: 校验失败时抛出
+        """
+        try:
+            admission = AdmissionRecord.objects.get(id=admission_id)
+        except AdmissionRecord.DoesNotExist:
+            raise Exception("录取记录不存在")
+
+        enrollment = admission.enrollment
+        enrollment.status = 'cancelled'
+        enrollment.save(update_fields=['status', 'updated_at'])
+
+        admission.delete()
+        return True
+
+    @staticmethod
+    def get_admission_list(
+        user_id: int | None = None,
+        status: str | None = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list, int]:
+        """获取录取列表.
+
+        Args:
+            user_id: 按用户筛选
+            status: 按公示状态筛选
+            page: 页码
+            per_page: 每页数量
+
+        Returns:
+            (录取列表, 总数)
+        """
+        queryset = AdmissionRecord.objects.select_related('enrollment', 'enrollment__user', 'admitted_by')
+
+        if user_id:
+            queryset = queryset.filter(enrollment__user_id=user_id)
+
+        if status:
+            queryset = queryset.filter(publish_status=status)
+
+        total = queryset.count()
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        result = []
+        for admission in queryset[start:end]:
+            result.append({
+                'id': admission.id,
+                'enrollment_id': admission.enrollment.id,
+                'user_name': admission.enrollment.user.username,
+                'course_name': admission.enrollment.course_name,
+                'department': admission.enrollment.department,
+                'position': admission.enrollment.position,
+                'publish_status': admission.publish_status,
+                'publish_time': admission.publish_time,
+                'admitted_at': admission.admitted_at,
+                'admitted_by_name': admission.admitted_by.username if admission.admitted_by else None,
+            })
+
+        return result, total
+
+    @staticmethod
+    def get_admission_detail(admission_id: int) -> dict | None:
+        """获取录取详情.
+
+        Args:
+            admission_id: 录取记录ID
+
+        Returns:
+            录取详情字典
+        """
+        try:
+            admission = AdmissionRecord.objects.select_related(
+                'enrollment', 'enrollment__user', 'admitted_by'
+            ).get(id=admission_id)
+        except AdmissionRecord.DoesNotExist:
+            return None
+
+        return {
+            'id': admission.id,
+            'enrollment_id': admission.enrollment.id,
+            'user_id': admission.enrollment.user.id,
+            'user_name': admission.enrollment.user.username,
+            'course_name': admission.enrollment.course_name,
+            'department': admission.enrollment.department,
+            'position': admission.enrollment.position,
+            'reason': admission.enrollment.reason,
+            'status': admission.enrollment.status,
+            'publish_status': admission.publish_status,
+            'publish_time': admission.publish_time,
+            'admitted_at': admission.admitted_at,
+            'admitted_by_name': admission.admitted_by.username if admission.admitted_by else None,
+            'notes': admission.notes,
+        }
+
+    @staticmethod
+    def publish_admission(admission_id: int) -> dict:
+        """公示录取记录.
+
+        Args:
+            admission_id: 录取记录ID
+
+        Returns:
+            更新后的录取记录
+
+        Raises:
+            Exception: 校验失败时抛出
+        """
+        try:
+            admission = AdmissionRecord.objects.get(id=admission_id)
+        except AdmissionRecord.DoesNotExist:
+            raise Exception("录取记录不存在")
+
+        if admission.publish_status == 'published':
+            raise Exception("该记录已在公示中")
+
+        admission.publish_status = 'published'
+        admission.publish_time = timezone.now()
+        admission.save(update_fields=['publish_status', 'publish_time'])
+
+        enrollment = admission.enrollment
+        enrollment.status = 'published'
+        enrollment.save(update_fields=['status', 'updated_at'])
+
+        return {
+            'id': admission.id,
+            'publish_status': admission.publish_status,
+            'publish_time': admission.publish_time,
+        }
+
+    @staticmethod
+    def batch_publish_admissions(admission_ids: list[int]) -> dict:
+        """批量公示录取记录.
+
+        Args:
+            admission_ids: 录取记录ID列表
+
+        Returns:
+            批量公示结果
+        """
+        success_count = 0
+        fail_count = 0
+        fail_reasons = []
+
+        for admission_id in admission_ids:
+            try:
+                AdmissionService.publish_admission(admission_id)
+                success_count += 1
+            except Exception as e:
+                fail_count += 1
+                fail_reasons.append({'id': admission_id, 'reason': str(e)})
+
+        return {
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'fail_reasons': fail_reasons,
+        }
+
+    @staticmethod
+    def unpublish_admission(admission_id: int) -> dict:
+        """取消公示.
+
+        Args:
+            admission_id: 录取记录ID
+
+        Returns:
+            更新结果
+
+        Raises:
+            Exception: 校验失败时抛出
+        """
+        try:
+            admission = AdmissionRecord.objects.get(id=admission_id)
+        except AdmissionRecord.DoesNotExist:
+            raise Exception("录取记录不存在")
+
+        admission.publish_status = 'unpublished'
+        admission.save(update_fields=['publish_status'])
+
+        return {
+            'id': admission.id,
+            'publish_status': admission.publish_status,
+        }
+
+    @staticmethod
+    def get_published_list(page: int = 1, per_page: int = 20) -> tuple[list, int]:
+        """获取已公示列表（公开接口）.
+
+        Args:
+            page: 页码
+            per_page: 每页数量
+
+        Returns:
+            (公示列表, 总数)
+        """
+        queryset = AdmissionRecord.objects.filter(
+            publish_status='published'
+        ).select_related('enrollment', 'enrollment__user').order_by('-publish_time')
+
+        total = queryset.count()
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        result = []
+        for admission in queryset[start:end]:
+            result.append({
+                'id': admission.id,
+                'user_name': admission.enrollment.user.username,
+                'course_name': admission.enrollment.course_name,
+                'department': admission.enrollment.department,
+                'position': admission.enrollment.position,
+                'publish_time': admission.publish_time,
+            })
+
+        return result, total
+
+
+# ==================== 批次管理服务 ====================
+
+class BatchService:
+    """批次管理服务类."""
+
+    @staticmethod
+    def create_batch(
+        name: str,
+        batch_type: str,
+        start_time: datetime,
+        end_time: datetime,
+        created_by: 'LabUser',
+        description: str = "",
+        max_enrollments: int = 0,
+    ) -> Batch:
+        """创建批次.
+
+        Args:
+            name: 批次名称
+            batch_type: 批次类型
+            start_time: 开始时间
+            end_time: 截止时间
+            created_by: 创建人
+            description: 批次说明
+            max_enrollments: 最大报名人数
+
+        Returns:
+            创建的批次对象
+        """
+        if start_time >= end_time:
+            raise Exception("开始时间必须早于截止时间")
+
+        batch = Batch.objects.create(
+            name=name,
+            batch_type=batch_type,
+            description=description,
+            start_time=start_time,
+            end_time=end_time,
+            max_enrollments=max_enrollments,
+            created_by=created_by,
+        )
+        return batch
+
+    @staticmethod
+    def update_batch(
+        batch_id: int,
+        name: str = None,
+        batch_type: str = None,
+        description: str = None,
+        start_time: datetime = None,
+        end_time: datetime = None,
+        status: str = None,
+        max_enrollments: int = None,
+    ) -> Batch:
+        """更新批次.
+
+        Args:
+            batch_id: 批次ID
+            name: 批次名称
+            batch_type: 批次类型
+            description: 批次说明
+            start_time: 开始时间
+            end_time: 截止时间
+            status: 状态
+            max_enrollments: 最大报名人数
+
+        Returns:
+            更新后的批次对象
+
+        Raises:
+            Exception: 批次不存在时抛出
+        """
+        try:
+            batch = Batch.objects.get(id=batch_id)
+        except Batch.DoesNotExist:
+            raise Exception("批次不存在")
+
+        if name is not None:
+            batch.name = name
+        if batch_type is not None:
+            batch.batch_type = batch_type
+        if description is not None:
+            batch.description = description
+        if start_time is not None:
+            if start_time >= (batch.end_time if end_time is None else end_time):
+                raise Exception("开始时间必须早于截止时间")
+            batch.start_time = start_time
+        if end_time is not None:
+            if (batch.start_time if start_time is None else start_time) >= end_time:
+                raise Exception("开始时间必须早于截止时间")
+            batch.end_time = end_time
+        if status is not None:
+            batch.status = status
+        if max_enrollments is not None:
+            batch.max_enrollments = max_enrollments
+
+        batch.save()
+        return batch
+
+    @staticmethod
+    def get_batch_list(
+        status: str = None,
+        batch_type: str = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list, int]:
+        """获取批次列表.
+
+        Args:
+            status: 按状态筛选
+            batch_type: 按类型筛选
+            page: 页码
+            per_page: 每页数量
+
+        Returns:
+            (批次列表, 总数)
+        """
+        queryset = Batch.objects.select_related('created_by').order_by('-created_at')
+
+        if status:
+            queryset = queryset.filter(status=status)
+        if batch_type:
+            queryset = queryset.filter(batch_type=batch_type)
+
+        total = queryset.count()
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        result = []
+        for batch in queryset[start:end]:
+            result.append({
+                'id': batch.id,
+                'name': batch.name,
+                'batch_type': batch.batch_type,
+                'batch_type_display': batch.get_batch_type_display(),
+                'description': batch.description,
+                'start_time': batch.start_time,
+                'end_time': batch.end_time,
+                'status': batch.status,
+                'status_display': batch.get_status_display(),
+                'max_enrollments': batch.max_enrollments,
+                'enrolled_count': batch.enrolled_count,
+                'created_by_name': batch.created_by.username if batch.created_by else None,
+                'created_at': batch.created_at,
+            })
+
+        return result, total
+
+    @staticmethod
+    def get_batch_detail(batch_id: int) -> dict | None:
+        """获取批次详情.
+
+        Args:
+            batch_id: 批次ID
+
+        Returns:
+            批次详情字典
+        """
+        try:
+            batch = Batch.objects.select_related('created_by').get(id=batch_id)
+        except Batch.DoesNotExist:
+            return None
+
+        return {
+            'id': batch.id,
+            'name': batch.name,
+            'batch_type': batch.batch_type,
+            'batch_type_display': batch.get_batch_type_display(),
+            'description': batch.description,
+            'start_time': batch.start_time,
+            'end_time': batch.end_time,
+            'status': batch.status,
+            'status_display': batch.get_status_display(),
+            'max_enrollments': batch.max_enrollments,
+            'enrolled_count': batch.enrolled_count,
+            'created_by_name': batch.created_by.username if batch.created_by else None,
+            'created_at': batch.created_at,
+            'updated_at': batch.updated_at,
+        }
+
+    @staticmethod
+    def delete_batch(batch_id: int) -> bool:
+        """删除批次.
+
+        Args:
+            batch_id: 批次ID
+
+        Returns:
+            是否成功
+
+        Raises:
+            Exception: 批次不存在或有报名时抛出
+        """
+        try:
+            batch = Batch.objects.get(id=batch_id)
+        except Batch.DoesNotExist:
+            raise Exception("批次不存在")
+
+        if batch.enrollments.exists():
+            raise Exception("该批次下存在报名记录，无法删除")
+
+        batch.delete()
+        return True
+
+    @staticmethod
+    def update_enrolled_count(batch_id: int) -> None:
+        """更新批次已报名人数.
+
+        Args:
+            batch_id: 批次ID
+        """
+        try:
+            batch = Batch.objects.get(id=batch_id)
+            count = batch.enrollments.count()
+            batch.enrolled_count = count
+            batch.save(update_fields=['enrolled_count', 'updated_at'])
+        except Batch.DoesNotExist:
+            pass
+
+    @staticmethod
+    def is_enrollable(batch_id: int) -> tuple[bool, str]:
+        """检查批次是否可以报名.
+
+        Args:
+            batch_id: 批次ID
+
+        Returns:
+            (是否可以报名, 错误信息)
+        """
+        try:
+            batch = Batch.objects.get(id=batch_id)
+        except Batch.DoesNotExist:
+            return False, "批次不存在"
+
+        if batch.status != 'open':
+            return False, f"批次状态为「{batch.get_status_display()}」，无法报名"
+
+        now = timezone.now()
+        if now < batch.start_time:
+            return False, "报名尚未开始"
+        if now > batch.end_time:
+            return False, "报名已截止"
+
+        if batch.max_enrollments > 0 and batch.enrolled_count >= batch.max_enrollments:
+            return False, f"报名人数已达上限（{batch.max_enrollments}人）"
+
+        return True, ""
+

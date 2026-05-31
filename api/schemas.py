@@ -129,6 +129,27 @@ class EnrollmentSchema(Schema):
     avatar: str | None = None
 
 
+# ==================== 基础 Schema（前置定义，避免循环引用）===================
+
+
+class PaginationSchema(Schema):
+    """分页信息."""
+
+    total: int
+    current_page: int
+    per_page: int
+    last_page: int
+
+
+class UserBriefSchema(Schema):
+    """用户简要信息."""
+
+    model_config = {"from_attributes": True}
+    id: int
+    name: str
+    avatar: str | None = None
+
+
 # ==================== 问题回复 Schema ====================
 
 
@@ -257,9 +278,15 @@ class EnrollmentSchema(Schema):
 
     id: int
     user_id: int
+    user_account: str
+    user_name: str
+    batch_id: Optional[int] = None
+    batch_name: Optional[str] = None
     course_name: str
     department: str
     position: str
+    student_class: Optional[str] = None
+    exam_direction: Optional[str] = None
     reason: str
     status: str
     status_display: str
@@ -278,6 +305,23 @@ class EnrollmentStatusUpdateSchema(Schema):
     """更新报名状态请求."""
 
     status: str  # pending, approved, rejected, cancelled
+
+
+class PaginatedEnrollmentList(Schema):
+    """分页报名列表 Schema."""
+
+    data: list[EnrollmentSchema]
+    pagination: PaginationSchema
+
+
+class EnrollmentFileSchema(Schema):
+    """报名文件 Schema."""
+
+    model_config = {"from_attributes": True}
+    id: int
+    file_name: str
+    file_size: int
+    uploaded_at: datetime
 
 
 # ==================== 草稿相关 Schema ====================
@@ -310,9 +354,12 @@ class DraftSchema(Schema):
 
     id: int
     user_id: int
+    batch_id: Optional[int] = None
     course_name: str
     department: str
     position: str
+    student_class: Optional[str] = None
+    exam_direction: Optional[str] = None
     reason: str
     draft_data: dict
     created_at: datetime
@@ -576,28 +623,286 @@ class PaginatedPendingAssignmentList(Schema):
     items: list[PendingAssignmentSchema]
 
 
-# ==================== 学员问题管理 Schema ====================
+# ==================== 录取与公示管理 Schema ====================
 
 
-class PaginationSchema(Schema):
-    """分页信息."""
+class AdmitInput(Schema):
+    """录取请求 Schema."""
+    enrollment_id: int
+    notes: str = ""
 
+
+class BatchAdmitInput(Schema):
+    """批量录取请求 Schema."""
+    enrollment_ids: list[int]
+    notes: str = ""
+
+
+class AdmissionRecordSchema(Schema):
+    """录取记录 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    enrollment_id: int
+    user_name: str
+    course_name: str
+    department: str
+    position: str
+    publish_status: str
+    publish_time: Optional[datetime] = None
+    admitted_at: datetime
+    admitted_by_name: Optional[str] = None
+
+
+class AdmissionDetailSchema(Schema):
+    """录取详情 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    enrollment_id: int
+    user_id: int
+    user_name: str
+    course_name: str
+    department: str
+    position: str
+    reason: str
+    status: str
+    publish_status: str
+    publish_time: Optional[datetime] = None
+    admitted_at: datetime
+    admitted_by_name: Optional[str] = None
+    notes: str
+
+
+class PublishInput(Schema):
+    """公示请求 Schema."""
+    admission_id: int
+
+
+class BatchPublishInput(Schema):
+    """批量公示请求 Schema."""
+    admission_ids: list[int]
+
+
+class UnpublishInput(Schema):
+    """取消公示请求 Schema."""
+    admission_id: int
+
+
+class PublishedRecordSchema(Schema):
+    """已公示记录 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    user_name: str
+    course_name: str
+    department: str
+    position: str
+    publish_time: Optional[datetime] = None
+
+
+# ==================== 数据存档 Schema ====================
+
+
+class ArchiveCreateInput(Schema):
+    """创建存档请求 Schema."""
+    year: int
+    archive_type: str
+    data: dict
+    summary: dict
+
+
+class ArchiveUpdateInput(Schema):
+    """更新存档请求 Schema."""
+    data: dict
+    summary: dict
+
+
+class ArchiveSchema(Schema):
+    """存档记录 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    year: int
+    archive_type: str
+    archive_type_display: str
+    summary: dict
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArchiveDetailSchema(Schema):
+    """存档详情 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    year: int
+    archive_type: str
+    archive_type_display: str
+    data: dict
+    summary: dict
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ==================== 统计分析 Schema ====================
+
+
+class GlobalStatsSchema(Schema):
+    """全局统计 Schema."""
+    total_enrollments: int
+    total_admissions: int
+    total_users: int
+    total_courses: int
+    total_questions: int
+
+
+class YearStatsSchema(Schema):
+    """年度统计 Schema."""
+    year: int
+    total_enrollments: int
+    total_admissions: int
+    enrollments_by_status: dict
+
+
+class EnrollmentStatsSchema(Schema):
+    """报名统计 Schema."""
     total: int
-    current_page: int
+    by_status: dict
+    by_department: dict
+
+
+class AdmissionStatsSchema(Schema):
+    """录取统计 Schema."""
+    total: int
+    by_publish_status: dict
+    recent_admissions: list[dict]
+
+
+class TrainingStatsSchema(Schema):
+    """培训统计 Schema."""
+    total_courses: int
+    total_enrollments: int
+    total_completed: int
+    total_assignments: int
+    total_submissions: int
+    average_score: Optional[float] = None
+
+
+class QuestionStatsSchema(Schema):
+    """问题统计 Schema."""
+    total: int
+    by_status: dict
+    by_category: dict
+
+
+# ==================== 分页列表 Schema ====================
+
+
+class PaginatedAdmissionList(Schema):
+    """分页录取列表 Schema."""
+    total: int
+    page: int
     per_page: int
-    last_page: int
+    items: list[AdmissionRecordSchema]
 
 
-class UserBriefSchema(Schema):
-    """用户简要信息."""
+class PaginatedPublishedList(Schema):
+    """分页公示列表 Schema."""
+    total: int
+    page: int
+    per_page: int
+    items: list[PublishedRecordSchema]
 
+
+class PaginatedArchiveList(Schema):
+    """分页存档列表 Schema."""
+    total: int
+    page: int
+    per_page: int
+    items: list[ArchiveSchema]
+
+
+# ==================== 批次管理 Schema ====================
+
+
+class BatchCreateInput(Schema):
+    """创建批次请求 Schema."""
+    name: str
+    batch_type: str = "new_student"
+    description: str = ""
+    start_time: datetime
+    end_time: datetime
+    max_enrollments: int = 0
+
+
+class BatchUpdateInput(Schema):
+    """更新批次请求 Schema."""
+    name: Optional[str] = None
+    batch_type: Optional[str] = None
+    description: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    status: Optional[str] = None
+    max_enrollments: Optional[int] = None
+
+
+class BatchSchema(Schema):
+    """批次 Schema."""
     model_config = {"from_attributes": True}
     id: int
     name: str
-    avatar: str | None = None
+    batch_type: str
+    batch_type_display: str
+    description: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+    status_display: str
+    max_enrollments: int
+    enrolled_count: int
+    created_by_name: Optional[str] = None
+    created_at: datetime
 
 
+class BatchDetailSchema(Schema):
+    """批次详情 Schema."""
+    model_config = {"from_attributes": True}
+    id: int
+    name: str
+    batch_type: str
+    batch_type_display: str
+    description: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+    status_display: str
+    max_enrollments: int
+    enrolled_count: int
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
 
+class PaginatedBatchList(Schema):
+    """分页批次列表 Schema."""
+    total: int
+    page: int
+    per_page: int
+    items: list[BatchSchema]
 
 
+# ==================== 导入导出 Schema ====================
+
+
+class ImportResultSchema(Schema):
+    """导入结果 Schema."""
+    total: int
+    success: int
+    failed: int
+    errors: list[str]
+
+
+class ExportQuerySchema(Schema):
+    """导出查询参数 Schema."""
+    status: Optional[str] = None
+    batch_id: Optional[int] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None

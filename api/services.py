@@ -13,26 +13,20 @@ from django.db.models import Q, QuerySet
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from api.auth_utils import (
-from django.db.models import Avg, Count, Q, QuerySet
-from django.utils import timezone
-
 from .auth_utils import (
     create_access_token,
     create_refresh_token,
     decode_token,
     is_token_blacklisted,
 )
-from api.email_utils import send_activation_code_email, send_forgot_password_code_email
-from api.models import (
+from .email_utils import send_activation_code_email, send_forgot_password_code_email
+from .models import (
     Enrollment,
     EnrollmentDraft,
     EnrollmentFile,
     LabUser,
     Question,
     QuestionReply,
-from .email_utils import send_activation_code_email, send_forgot_password_code_email
-from .models import (
     AdmissionRecord,
     Batch,
     Department,

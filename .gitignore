@@ -119,6 +119,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# uv
+uv.lock
+
 # IDE
 .idea/
 .vscode/
@@ -129,3 +132,9 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Scripts
+create_admin.py
+
+# Git
+.gitignore

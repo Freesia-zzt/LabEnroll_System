@@ -1321,15 +1321,35 @@ def export_enrollments(
     """导出报名数据."""
     queryset = Enrollment.objects.select_related('user', 'batch').all()
 
+<<<<<<< HEAD
+from api.archives.router import router as archive_router
+from api.export.router import router as export_router
+from api.statistics.router import router as statistics_router
+
+# 创建主路由
+router = Router(tags=["API"])
+=======
     if status:
         queryset = queryset.filter(status=status)
     if batch_id:
         queryset = queryset.filter(batch_id=batch_id)
+>>>>>>> master
 
 router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 router.add_router("/", enrollment_router)
+<<<<<<< HEAD
+
+# 挂载数据存档路由
+router.add_router("/archives", archive_router)
+
+# 挂载统计分析路由
+router.add_router("/statistics", statistics_router)
+
+# 挂载数据导出路由
+router.add_router("/export", export_router)
+=======
 router.add_router("/admin/departments", admin_departments_router)
 router.add_router("/admin/applications", admin_applications_router)
 router.add_router("/admin/statistics", admin_statistics_router)
@@ -1354,3 +1374,4 @@ router.add_router("/v1/admissions", admission_router)
 router.add_router("/v1/admissions", publish_router)
 router.add_router("/v1/batch", batch_router)
 router.add_router("/v1/export", export_router)
+>>>>>>> master

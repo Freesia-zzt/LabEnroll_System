@@ -723,6 +723,10 @@ def delete_enrollment_file(
 
 # ==================== 主路由 ====================
 
+from api.archives.router import router as archive_router
+from api.export.router import router as export_router
+from api.statistics.router import router as statistics_router
+
 # 创建主路由
 router = Router(tags=["API"])
 
@@ -731,3 +735,12 @@ router.add_router("/questions", question_router)
 
 # 挂载报名模块路由
 router.add_router("/", enrollment_router)
+
+# 挂载数据存档路由
+router.add_router("/archives", archive_router)
+
+# 挂载统计分析路由
+router.add_router("/statistics", statistics_router)
+
+# 挂载数据导出路由
+router.add_router("/export", export_router)

@@ -94,14 +94,9 @@ from .schemas import (
     SendActivationCodeInput,
     UpdateInfoInput,
     VerifyActivationCodeInput,
-)
-from api.services import (
-    AuthService,
     TrainingNotificationSchema,
     TrainingStatisticsSchema,
     UnpublishInput,
-    UpdateInfoInput,
-    VerifyActivationCodeInput,
     YearStatsSchema,
 )
 from .services import (

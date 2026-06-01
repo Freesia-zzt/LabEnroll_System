@@ -1,4 +1,10 @@
 """API 业务逻辑层."""
+from ninja import Schema
+
+class TrainingNotificationSchema(Schema):
+    id: int
+    title: str
+    content: str
 import logging
 import random
 from datetime import datetime, timedelta
@@ -389,7 +395,7 @@ class QuestionService:
         return queryset, total
 
     @staticmethod
-    def get_question_detail(question_id: int) -> Question | None:
+    def get_question_detail(question_id: int) -&gt; Question | None:
         """获取问题详情.
 
         Args:
@@ -398,7 +404,47 @@ class QuestionService:
         Returns:
             问题实例，不存在则返回None
         """
-class AuthService:
+        try:
+            return Question.objects.prefetch_related("replies", "replies__author").get(
+                id=question_id
+            )
+        except Question.DoesNotExist:
+            return None
+
+    @staticmethod
+    def update_question(
+        question: Question,
+        title: str | None = None,
+        content: str | None = None,
+        category: str | None = None,
+        attachments: list[str] | None = None,
+    ) -&gt; Question:
+        """更新问题."""
+        if title is not None:
+            question.title = title
+        if content is not None:
+            question.content = content
+        if category is not None:
+            question.category = category
+        if attachments is not None:
+            question.attachments = attachments
+        question.save()
+        return question
+
+    @staticmethod
+    def update_question_status(question: Question, status: str) -&gt; Question:
+        """更新问题状态."""
+        question.status = status
+        question.save()
+        return question
+
+    @staticmethod
+    def delete_question(question: Question) -&gt; None:
+        """删除问题."""
+        question.delete()
+
+
+class QuestionReplyService:
     """认证服务类."""
 
     @staticmethod

@@ -470,7 +470,7 @@ class AuthService:
         attachments: list[str] | None = None,
     ) -> Question:
         """更新问题."""
-        """更新问题.
+        """更新问题."""
     def verify_activation_code(account: str, activation_code: str) -> None:
         """验证激活码."""
         try:
@@ -497,7 +497,7 @@ class AuthService:
     @staticmethod
     def update_question_status(question: Question, status: str) -> Question:
         """更新问题状态."""
-        """更新问题状态.
+        """更新问题状态."""
     def logout(refresh_token: str) -> None:
         """用户登出."""
         payload = decode_token(refresh_token)
@@ -545,7 +545,7 @@ class QuestionReplyService:
         reply = QuestionReply.objects.create(
             question=question,
             author=author,
-            content=content,
+            content=content,)
         expires_at = timezone.now() + timedelta(days=7)
 
         TokenBlacklist.objects.create(

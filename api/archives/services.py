@@ -7,12 +7,12 @@ from django.db.models import Count, QuerySet
 from api.models import Admin, Admission, DataArchive, StudentApplication
 
 
-def create_or_update_archive(year: str, admin: Admin) -> DataArchive:
+def create_or_update_archive(year: str, user: Admin) -> DataArchive:
     """创建或更新年度存档.
 
     Args:
         year: 存档年份
-        admin: 执行存档的管理员
+        user: 执行存档的用户
 
     Returns:
         创建或更新的存档实例
@@ -34,7 +34,7 @@ def create_or_update_archive(year: str, admin: Admin) -> DataArchive:
             "grade_stats": grade_stats,
             "total_applications": total_applications,
             "admitted_count": admitted_count,
-            "operator": admin,
+            "operator": user,
         },
     )
     return archive

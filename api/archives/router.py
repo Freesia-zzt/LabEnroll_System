@@ -32,7 +32,7 @@ def create_archive(
     data: ArchiveCreateSchema,
 ) -> dict:
     """创建或更新指定年份的数据存档."""
-    admin = request.admin
+    user = request.auth
 
     try:
         year_int = int(data.archive_year)
@@ -43,7 +43,7 @@ def create_archive(
 
     archive = create_or_update_archive(
         year=data.archive_year,
-        admin=admin,
+        user=user,
     )
 
     return api_response(
@@ -89,7 +89,7 @@ def get_archive(
         grade_stats=archive.grade_stats,
         archive_data=archive.archive_data,
         created_at=archive.created_at,
-        operator_name=archive.operator.name if archive.operator else None,
+        operator_name=archive.operator.username if archive.operator else None,
     )
 
     return api_response(code=200, message="获取成功", data=detail.model_dump())

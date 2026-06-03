@@ -314,6 +314,132 @@ class AuthService:
             "token": new_token,
             "refresh_token": new_refresh_token,
         }
+
+
+class QuestionService:
+    """问题服务类."""
+
+    @staticmethod
+    def create_question(
+        author: User,
+        title: str,
+        content: str,
+        category: str,
+        attachments: list[str],
+    ) -> Question:
+        """创建新问题.
+
+        Args:
+            author: 提问者
+            title: 问题标题
+            content: 问题内容
+            category: 问题分类
+            attachments: 附件URL列表
+
+        Returns:
+            创建的问题实例
+        """
+        return Question.objects.create(
+            author=author,
+            title=title,
+            content=content,
+            category=category,
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def get_question_list(
+        user: User | None = None,
+        category: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        page: int = 1,
+        per_page: int = 10,
+    ) -> tuple[QuerySet[Question], int]:
+        """获取问题列表.
+
+        Args:
+            user: 按用户筛选（None表示不过滤）
+            category: 按分类筛选
+            status: 按状态筛选
+            search: 搜索关键词（搜索标题和内容）
+            page: 当前页码
+            per_page: 每页数量
+
+        Returns:
+            (问题查询集, 总数量)
+        """
+        queryset = Question.objects.all()
+
+        if user:
+            queryset = queryset.filter(author=user)
+        if category:
+            queryset = queryset.filter(category=category)
+        if status and status != "all":
+            queryset = queryset.filter(status=status)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(content__icontains=search)
+            )
+
+        total = queryset.count()
+
+        start = (page - 1) * per_page
+        end = start + per_page
+        queryset = queryset[start:end]
+
+        return queryset, total
+
+    @staticmethod
+    def get_question_detail(question_id: int) -> Question | None:
+        """获取问题详情.
+
+        Args:
+            question_id: 问题ID
+
+        Returns:
+            问题实例，不存在则返回None
+        """
+        try:
+            return Question.objects.prefetch_related("replies", "replies__author").get(
+                id=question_id
+            )
+        except Question.DoesNotExist:
+            return None
+
+    @staticmethod
+    def update_question(
+        question: Question,
+        title: str | None = None,
+        content: str | None = None,
+        category: str | None = None,
+        attachments: list[str] | None = None,
+    ) -> Question:
+        """更新问题."""
+        if title is not None:
+            question.title = title
+        if content is not None:
+            question.content = content
+        if category is not None:
+            question.category = category
+        if attachments is not None:
+            question.attachments = attachments
+        question.save()
+        return question
+
+    @staticmethod
+    def update_question_status(question: Question, status: str) -> Question:
+        """更新问题状态."""
+        question.status = status
+        question.save()
+        return question
+
+    @staticmethod
+    def delete_question(question: Question) -> None:
+        """删除问题."""
+        question.delete()
+
+
 class EnrollmentService:
     """报名服务类."""
 
@@ -1159,92 +1285,6 @@ class CourseReviewService:
             )
         except CourseEnrollment.DoesNotExist:
             return None
-
-
-# ==================== 学员问题管理服务 ====================
-
-class QuestionService:
-    """问题服务类."""
-
-    @staticmethod
-    def create_question(
-        author,
-        title: str,
-        content: str,
-        category: str,
-        attachments: list,
-    ):
-        return Question.objects.create(
-            author=author,
-            title=title,
-            content=content,
-            category=category,
-            attachments=attachments,
-        )
-
-    @staticmethod
-    def get_question_list(
-        user=None,
-        category: Optional[str] = None,
-        status: Optional[str] = None,
-        search: Optional[str] = None,
-        page: int = 1,
-        per_page: int = 10,
-    ):
-        queryset = Question.objects.all()
-        if user:
-            queryset = queryset.filter(author=user)
-        if category:
-            queryset = queryset.filter(category=category)
-        if status and status != "all":
-            queryset = queryset.filter(status=status)
-        if search:
-            queryset = queryset.filter(
-                models.Q(title__icontains=search) | models.Q(content__icontains=search)
-            )
-        total = queryset.count()
-        start = (page - 1) * per_page
-        end = start + per_page
-        queryset = queryset[start:end]
-        return queryset, total
-
-    @staticmethod
-    def get_question_detail(question_id: int):
-        try:
-            return Question.objects.prefetch_related("replies", "replies__author").get(
-                id=question_id
-            )
-        except Question.DoesNotExist:
-            return None
-
-    @staticmethod
-    def update_question(
-        question,
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        category: Optional[str] = None,
-        attachments: Optional[list] = None,
-    ):
-        if title is not None:
-            question.title = title
-        if content is not None:
-            question.content = content
-        if category is not None:
-            question.category = category
-        if attachments is not None:
-            question.attachments = attachments
-        question.save()
-        return question
-
-    @staticmethod
-    def update_question_status(question, status: str):
-        question.status = status
-        question.save()
-        return question
-
-    @staticmethod
-    def delete_question(question):
-        question.delete()
 
 
 class QuestionReplyService:

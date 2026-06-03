@@ -96,11 +96,11 @@ from .schemas import (
     QuestionUpdateSchema,
     RefreshTokenInput,
     SendActivationCodeInput,
+    UpdateInfoInput,
+    VerifyActivationCodeInput,
     TrainingNotificationSchema,
     TrainingStatisticsSchema,
     UnpublishInput,
-    UpdateInfoInput,
-    VerifyActivationCodeInput,
     YearStatsSchema,
 )
 from .services import (
@@ -1327,3 +1327,24 @@ router.add_router("/import", import_router)
 router.add_router("/admissions", admission_router)
 router.add_router("/admissions", publish_router)
 router.add_router("/batch", batch_router)
+
+# 挂载用户相关路由
+router.add_router("/user", auth_router)
+router.add_router("/forgot-password", forgot_password_router)
+router.add_router("/questions", question_router)
+router.add_router("/", enrollment_router)
+
+# 挂载管理后台路由
+router.add_router("/admin/departments", admin_departments_router)
+router.add_router("/admin/applications", admin_applications_router)
+router.add_router("/admin/statistics", admin_statistics_router)
+router.add_router("/admin/roles", admin_roles_router)
+router.add_router("/admin/admins", admin_admins_router)
+router.add_router("/admin", admin_lab_router)
+router.add_router("/admin/system", admin_system_router)
+router.add_router("/admin/users", admin_users_router)
+router.add_router("/admin/lab-news", admin_news_router)
+router.add_router("/admin/faqs", admin_faqs_router)
+router.add_router("/admin", admin_training_router)
+router.add_router("/admin/audit-logs", admin_audit_logs_router)
+

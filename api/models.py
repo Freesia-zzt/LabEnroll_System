@@ -1369,6 +1369,11 @@ class TaskCorrect(models.Model):
 # ==================== 认证模块模型 ====================
 
 
+# ==============================================================================
+# 系统设置模型
+# ==============================================================================
+
+
 class SystemConfig(models.Model):
     """系统配置表（单例表，只应有一条记录）."""
 
@@ -1514,10 +1519,4 @@ class AuditLog(models.Model):
     def __str__(self) -> str:
         user_info = self.user.username if self.user else "未知用户"
         return f"{user_info} - {self.get_action_display()} - {self.module}"
-        return f"{self.username}({self.account})"
-
-    @property
-    def is_staff(self) -> bool:
-        return self.role == 2
-
 

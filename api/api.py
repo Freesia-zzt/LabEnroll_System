@@ -15,15 +15,19 @@ from api.admin_news import router as admin_news_router
 from api.admin_roles import admin_router as admin_admins_router
 from api.admin_roles import role_router as admin_roles_router
 from api.admin_statistics import router as admin_statistics_router
+from api.archives.router import router as archive_router
+from api.statistics.router import router as statistics_router
+from api.export.router import router as export_data_router
 from api.admin_system import router as admin_system_router
 from api.admin_training import router as admin_training_router
 from api.admin_users import router as admin_users_router
 from api.auth_utils import api_response, auth_bearer
-from api.models import Enrollment, EnrollmentFile, Question, User
 from .models import (
     CourseEnrollment,
     Enrollment,
+    EnrollmentFile,
     LabUser,
+    Question,
     User,
 )
 from .schemas import (
@@ -1239,10 +1243,10 @@ def delete_batch(request, batch_id: int) -> dict:
 
 # ==================== 导入导出 API ====================
 
-export_router = Router(tags=["导入导出"], auth=auth_bearer)
+import_router = Router(tags=["数据导入"], auth=auth_bearer)
 
 
-@export_router.post("/import", response=ImportResultSchema, summary="导入报名数据")
+@import_router.post("/import", response=ImportResultSchema, summary="导入报名数据")
 def import_enrollments(request, file: UploadedFile = File(...)) -> dict:
     """批量导入报名数据（Excel/CSV）."""
     import csv
@@ -1307,24 +1311,30 @@ def import_enrollments(request, file: UploadedFile = File(...)) -> dict:
     }
 
 
-@export_router.get("/export", summary="导出报名数据")
-def export_enrollments(
-    request,
-    status: Optional[str] = None,
-    batch_id: Optional[int] = None,
-) -> dict:
-    """导出报名数据."""
-    queryset = Enrollment.objects.select_related('user', 'batch').all()
+# 挂载数据存档路由
+router.add_router("/archives", archive_router)
 
-    if status:
-        queryset = queryset.filter(status=status)
-    if batch_id:
-        queryset = queryset.filter(batch_id=batch_id)
+# 挂载统计分析路由
+router.add_router("/statistics", statistics_router)
 
+# 挂载数据导出路由
+router.add_router("/export", export_data_router)
+
+# 挂载数据导入路由
+router.add_router("/import", import_router)
+
+# 挂载录取管理路由
+router.add_router("/admissions", admission_router)
+router.add_router("/admissions", publish_router)
+router.add_router("/batch", batch_router)
+
+# 挂载用户相关路由
 router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 router.add_router("/", enrollment_router)
+
+# 挂载管理后台路由
 router.add_router("/admin/departments", admin_departments_router)
 router.add_router("/admin/applications", admin_applications_router)
 router.add_router("/admin/statistics", admin_statistics_router)
@@ -1338,14 +1348,3 @@ router.add_router("/admin/faqs", admin_faqs_router)
 router.add_router("/admin", admin_training_router)
 router.add_router("/admin/audit-logs", admin_audit_logs_router)
 
-
-# 挂载子路由
-router.add_router("/v1/auth", auth_router)
-router.add_router("/v1/forgot-password", forgot_password_router)
-router.add_router("/v1", enrollment_router)
-router.add_router("/v1/training", training_router)
-router.add_router("/v1/questions", question_router)
-router.add_router("/v1/admissions", admission_router)
-router.add_router("/v1/admissions", publish_router)
-router.add_router("/v1/batch", batch_router)
-router.add_router("/v1/export", export_router)

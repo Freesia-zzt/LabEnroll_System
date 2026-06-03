@@ -5,18 +5,18 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from django.conf import settings
-from django.db.models import Q, QuerySet
+from django.db.models import Avg, Count, Q, QuerySet
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .auth_utils import (
+from api.auth_utils import (
     create_access_token,
     create_refresh_token,
     decode_token,
     is_token_blacklisted,
 )
-from .email_utils import send_activation_code_email, send_forgot_password_code_email
-from .models import (
+from api.email_utils import send_activation_code_email, send_forgot_password_code_email
+from api.models import (
     AdmissionRecord,
     Assignment,
     AssignmentSubmission,
@@ -314,6 +314,8 @@ class AuthService:
             "token": new_token,
             "refresh_token": new_refresh_token,
         }
+
+
 class QuestionService:
     """问题服务类."""
 

@@ -3,7 +3,6 @@
 包含用户、问题、报名等核心业务模型，所有表和字段均已添加中文注释。
 """
 
-"""API 数据模型定义."""
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
@@ -726,6 +725,7 @@ class LabUser(AbstractBaseUser, PermissionsMixin):
     last_login_at = models.DateTimeField(null=True, blank=True, verbose_name="最后登录时间")
     activation_code = models.CharField(max_length=6, null=True, blank=True, verbose_name="6位激活码")
     activation_expire = models.DateTimeField(null=True, blank=True, verbose_name="激活码过期时间")
+    token = models.CharField(max_length=500, null=True, blank=True, verbose_name="登录令牌")
     is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
     deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -1153,6 +1153,181 @@ class TokenBlacklist(models.Model):
         return f"{self.user.username}-{self.jti[:8]}..."
 
 
+# ==============================================================================
+# 管理员模型
+# ==============================================================================
+
+
+class Admin(models.Model):
+    """管理员表（简化版，主要用于 Token 认证）."""
+
+    name = models.CharField(max_length=100, verbose_name="姓名")
+    username = models.CharField(max_length=50, unique=True, verbose_name="用户名")
+    password_hash = models.CharField(max_length=255, verbose_name="密码哈希")
+    email = models.EmailField(verbose_name="邮箱")
+    phone = models.CharField(max_length=11, blank=True, null=True, verbose_name="手机号")
+    token = models.CharField(max_length=255, blank=True, null=True, verbose_name="认证Token")
+    is_active = models.BooleanField(default=True, verbose_name="是否激活")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "管理员"
+        verbose_name_plural = "管理员"
+        db_table = "admins"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+# ==============================================================================
+# 报名相关模型
+# ==============================================================================
+
+
+class StudentApplication(models.Model):
+    """学生报名表.
+
+    存储学生的报名信息，包括个人基本信息、学业信息、申请信息等。
+    """
+
+    STATUS_CHOICES = [
+        ("draft", "草稿"),
+        ("submitted", "已提交"),
+        ("reviewing", "审核中"),
+        ("approved", "审核通过"),
+        ("rejected", "审核拒绝"),
+        ("admitted", "已录取"),
+    ]
+
+    GENDER_CHOICES = [
+        ("male", "男"),
+        ("female", "女"),
+    ]
+
+    student_id = models.CharField(max_length=50, verbose_name="学号")
+    name = models.CharField(max_length=100, verbose_name="姓名")
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, verbose_name="性别")
+    grade = models.CharField(max_length=20, verbose_name="年级")
+    major = models.CharField(max_length=100, verbose_name="专业")
+    phone = models.CharField(max_length=11, verbose_name="手机号")
+    email = models.EmailField(verbose_name="邮箱")
+    gpa = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True, verbose_name="GPA")
+    skills = models.TextField(blank=True, verbose_name="技能特长")
+    experience = models.TextField(blank=True, verbose_name="项目经验")
+    motivation = models.TextField(blank=True, verbose_name="申请动机")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft", verbose_name="状态")
+    submitted_at = models.DateTimeField(null=True, blank=True, verbose_name="提交时间")
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="审核时间")
+    review_comment = models.TextField(blank=True, verbose_name="审核意见")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "学生报名"
+        verbose_name_plural = "学生报名"
+        db_table = "student_applications"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name}({self.student_id})"
+
+
+class Admission(models.Model):
+    """录取表.
+
+    存储学生的录取信息，与报名表一对一关联。
+    """
+
+    application = models.OneToOneField(
+        StudentApplication,
+        on_delete=models.CASCADE,
+        related_name="admission_info",
+        verbose_name="关联报名",
+    )
+    admit_year = models.CharField(max_length=4, verbose_name="录取年份")
+    lab_group = models.CharField(max_length=100, verbose_name="实验室分组")
+    mentor = models.CharField(max_length=100, blank=True, verbose_name="导师")
+    start_date = models.DateField(verbose_name="开始日期")
+    end_date = models.DateField(null=True, blank=True, verbose_name="结束日期")
+    is_public = models.BooleanField(default=False, verbose_name="是否公示")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "录取信息"
+        verbose_name_plural = "录取信息"
+        db_table = "admissions"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.application.name} - {self.admit_year}"
+
+
+class Notice(models.Model):
+    """公告表.
+
+    存储系统公告信息。
+    """
+
+    title = models.CharField(max_length=200, verbose_name="标题")
+    content = models.TextField(verbose_name="内容")
+    author = models.ForeignKey(
+        LabUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="notices",
+        verbose_name="发布人",
+    )
+    is_published = models.BooleanField(default=False, verbose_name="是否发布")
+    published_at = models.DateTimeField(null=True, blank=True, verbose_name="发布时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "公告"
+        verbose_name_plural = "公告"
+        db_table = "notices"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class DataArchive(models.Model):
+    """数据存档模型.
+
+    存储年度数据存档信息，使用 JSONField 存储复杂数据结构。
+    """
+
+    year = models.CharField(max_length=4, unique=True, verbose_name="年份", help_text="存档年份")
+    archive_data = models.JSONField(default=dict, verbose_name="存档数据", help_text="完整的报名数据存档")
+    major_stats = models.JSONField(default=dict, verbose_name="专业统计", help_text="按专业统计的数据")
+    grade_stats = models.JSONField(default=dict, verbose_name="年级统计", help_text="按年级统计的数据")
+    total_applications = models.IntegerField(default=0, verbose_name="总报名数", help_text="该年度总报名数量")
+    admitted_count = models.IntegerField(default=0, verbose_name="录取人数", help_text="该年度录取人数")
+    operator = models.ForeignKey(
+        Admin,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="archives",
+        verbose_name="存档人",
+        help_text="执行存档操作的用户",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "数据存档"
+        verbose_name_plural = "数据存档"
+        db_table = "data_archives"
+        ordering = ["-year"]
+
+    def __str__(self) -> str:
+        return f"{self.year}年度存档"
+
+
 class TaskCorrect(models.Model):
     """任务批改表."""
 
@@ -1344,3 +1519,4 @@ class AuditLog(models.Model):
     def __str__(self) -> str:
         user_info = self.user.username if self.user else "未知用户"
         return f"{user_info} - {self.get_action_display()} - {self.module}"
+

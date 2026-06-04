@@ -36,6 +36,9 @@ from .schemas import (
     AdmissionRecordSchema,
     AdmissionStatsSchema,
     ApiResponseSchema,
+    ApplicationFormCreateSchema,
+    ApplicationFormDetailSchema,
+    ApplicationFormSubmitResponseSchema,
     ArchiveCreateInput,
     ArchiveDetailSchema,
     ArchiveSchema,
@@ -82,6 +85,7 @@ from .schemas import (
     PaginatedNotificationList,
     PaginatedPendingAssignmentList,
     PaginatedPublishedList,
+    PaginationSchema,
     PublishedRecordSchema,
     PublishInput,
     QuestionBriefSchema,
@@ -105,6 +109,7 @@ from .schemas import (
 )
 from .services import (
     AdmissionService,
+    ApplicationFormService,
     AssignmentService,
     AuthService,
     BatchService,
@@ -277,6 +282,98 @@ def forgot_password_reset(request: HttpRequest, data: ForgotPasswordResetInput) 
         new_password_confirmation=data.new_password_confirmation,
     )
     return api_response(msg="密码重置成功，请重新登录")
+
+
+# ==================== 用户端报名申请路由 ====================
+
+application_router = Router(tags=["报名申请"], auth=auth_bearer)
+
+
+@application_router.post(
+    "/apply",
+    response={200: ApplicationFormSubmitResponseSchema},
+    summary="提交报名申请",
+    description="用户提交报名申请，包含字段校验和重复报名检测",
+)
+def submit_application(request: HttpRequest, data: ApplicationFormCreateSchema) -> dict:
+    """提交报名申请.
+
+    - 检测重复报名（同一配置下只能报名一次）
+    - 校验报名配置是否开启、是否在报名时间内
+    - 必填字段：姓名、班级、学院、专业、报名理由
+    """
+    user = request.auth
+    application = ApplicationFormService.create_application(
+        user_id=user.id,
+        config_id=data.config_id,
+        name=data.name,
+        class_name=data.class_name,
+        academy=data.academy,
+        major=data.major,
+        sign_reason=data.sign_reason,
+        email=data.email,
+        director_name=data.director_name,
+    )
+    return {
+        "code": 200,
+        "message": "报名提交成功",
+        "data": application,
+    }
+
+
+@application_router.get(
+    "/applications",
+    summary="获取我的报名列表",
+    description="获取当前用户的报名申请列表，支持分页和状态筛选",
+)
+def get_my_applications(
+    request: HttpRequest,
+    page: int = 1,
+    page_size: int = 20,
+    status: int | None = None,
+) -> dict:
+    """获取当前用户的报名申请列表.
+
+    GET /api/v1/applications?page=1&page_size=20&status=1
+    """
+    user = request.auth
+    result, total = ApplicationFormService.get_user_applications(
+        user_id=user.id,
+        page=page,
+        page_size=page_size,
+        status=status,
+    )
+    last_page = (total + page_size - 1) // page_size if total > 0 else 1
+    return {
+        "data": result,
+        "pagination": {
+            "total": total,
+            "current_page": page,
+            "per_page": page_size,
+            "last_page": last_page,
+        },
+    }
+
+
+@application_router.get(
+    "/applications/{application_id}",
+    response=ApplicationFormDetailSchema,
+    summary="获取报名详情",
+    description="获取报名申请详情，仅能查看自己的报名",
+)
+def get_application_detail(request: HttpRequest, application_id: int) -> dict:
+    """获取报名申请详情.
+
+    GET /api/v1/applications/{application_id}
+    """
+    user = request.auth
+    application = ApplicationFormService.get_application_detail(
+        application_id=application_id,
+        user_id=user.id,
+    )
+    if not application:
+        raise HttpError(404, "报名记录不存在或无权查看")
+    return application
 
 
 # ==================== 问题模块路由 ====================
@@ -1333,8 +1430,12 @@ router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 router.add_router("/", enrollment_router)
+<<<<<<< Updated upstream
 
 # 挂载管理后台路由
+=======
+router.add_router("/applications", application_router)
+>>>>>>> Stashed changes
 router.add_router("/admin/departments", admin_departments_router)
 router.add_router("/admin/applications", admin_applications_router)
 router.add_router("/admin/statistics", admin_statistics_router)

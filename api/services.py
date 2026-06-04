@@ -1857,3 +1857,210 @@ class BatchService:
 
         return True, ""
 
+
+class ApplicationFormService:
+    """用户端报名申请服务类."""
+
+    @staticmethod
+    def check_duplicate(config_id: int, user_id: int) -> tuple[bool, str]:
+        """检测重复报名.
+
+        Args:
+            config_id: 报名配置ID
+            user_id: 用户ID
+
+        Returns:
+            (是否存在重复报名, 错误信息)
+        """
+        from .models import ApplicationForm
+
+        exists = ApplicationForm.objects.filter(
+            config_id=config_id,
+            user_id=user_id,
+            is_deleted=False
+        ).exists()
+
+        if exists:
+            return True, "您已提交过报名，无需重复提交"
+
+        return False, ""
+
+    @staticmethod
+    def validate_config(config_id: int) -> tuple[bool, str, dict | None]:
+        """校验报名配置是否有效.
+
+        Args:
+            config_id: 报名配置ID
+
+        Returns:
+            (是否有效, 错误信息, 配置对象)
+        """
+        from .models import RegistrationConfig
+
+        try:
+            config = RegistrationConfig.objects.get(id=config_id, is_deleted=False)
+        except RegistrationConfig.DoesNotExist:
+            return False, "报名配置不存在", None
+
+        if config.is_open != 1:
+            return False, "该报名通道已关闭", None
+
+        now = timezone.now()
+        if now < config.reg_start_time:
+            return False, f"报名尚未开始，开始时间：{config.reg_start_time.strftime('%Y-%m-%d %H:%M')}", None
+        if now > config.reg_end_time:
+            return False, f"报名已截止，截止时间：{config.reg_end_time.strftime('%Y-%m-%d %H:%M')}", None
+
+        return True, "", config
+
+    @staticmethod
+    def create_application(
+        user_id: int,
+        config_id: int,
+        name: str,
+        class_name: str,
+        academy: str,
+        major: str,
+        sign_reason: str,
+        email: str | None = None,
+        director_name: str | None = None,
+    ) -> dict:
+        """创建报名申请.
+
+        Args:
+            user_id: 用户ID
+            config_id: 报名配置ID
+            name: 姓名
+            class_name: 班级
+            academy: 学院
+            major: 专业
+            sign_reason: 报名理由
+            email: 邮箱
+            director_name: 导员姓名
+
+        Returns:
+            报名申请详情字典
+
+        Raises:
+            HttpError: 创建失败时抛出
+        """
+        from .models import ApplicationForm
+        from ninja.errors import HttpError
+
+        is_duplicate, msg = ApplicationFormService.check_duplicate(config_id, user_id)
+        if is_duplicate:
+            raise HttpError(400, msg)
+
+        is_valid, msg, config = ApplicationFormService.validate_config(config_id)
+        if not is_valid:
+            raise HttpError(400, msg)
+
+        application = ApplicationForm.objects.create(
+            config_id=config_id,
+            user_id=user_id,
+            name=name,
+            class_name=class_name,
+            academy=academy,
+            major=major,
+            email=email or "",
+            director_name=director_name or "",
+            sign_reason=sign_reason,
+            status=1,
+        )
+
+        return ApplicationFormService._application_to_detail(application)
+
+    @staticmethod
+    def get_user_applications(
+        user_id: int,
+        page: int = 1,
+        page_size: int = 20,
+        status: int | None = None,
+    ) -> tuple[list[dict], int]:
+        """获取用户的所有报名申请.
+
+        Args:
+            user_id: 用户ID
+            page: 页码
+            page_size: 每页数量
+            status: 状态筛选
+
+        Returns:
+            (报名申请列表, 总数)
+        """
+        from .models import ApplicationForm
+
+        queryset = ApplicationForm.objects.filter(
+            user_id=user_id,
+            is_deleted=False
+        ).select_related('config')
+
+        if status is not None:
+            queryset = queryset.filter(status=status)
+
+        total = queryset.count()
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        queryset = queryset[start:end]
+
+        result = []
+        for app in queryset:
+            result.append(ApplicationFormService._application_to_detail(app))
+
+        return result, total
+
+    @staticmethod
+    def get_application_detail(application_id: int, user_id: int | None = None) -> dict | None:
+        """获取报名申请详情.
+
+        Args:
+            application_id: 报名申请ID
+            user_id: 用户ID（用于权限校验，不传则不校验）
+
+        Returns:
+            报名申请详情字典，不存在则返回None
+        """
+        from .models import ApplicationForm
+
+        try:
+            application = ApplicationForm.objects.select_related('config', 'user').get(
+                id=application_id,
+                is_deleted=False
+            )
+        except ApplicationForm.DoesNotExist:
+            return None
+
+        if user_id is not None and application.user_id != user_id:
+            return None
+
+        return ApplicationFormService._application_to_detail(application)
+
+    @staticmethod
+    def _application_to_detail(app: 'ApplicationForm') -> dict:
+        """将 ApplicationForm 模型转换为详情字典.
+
+        Args:
+            app: ApplicationForm 实例
+
+        Returns:
+            详情字典
+        """
+        return {
+            'id': app.id,
+            'config_id': app.config_id,
+            'config_title': app.config.title if app.config else None,
+            'name': app.name,
+            'status': app.status,
+            'status_display': app.get_status_display(),
+            'class_name': app.class_name,
+            'academy': app.academy,
+            'major': app.major,
+            'email': app.email,
+            'director_name': app.director_name,
+            'sign_reason': app.sign_reason,
+            'audit_time': app.audit_time,
+            'audit_remark': app.audit_remark,
+            'created_at': app.created_at,
+        }
+

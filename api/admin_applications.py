@@ -59,7 +59,7 @@ def _application_to_out(app: ApplicationForm) -> dict:
     "",
     response={200: list[ApplicationOut]},
     summary="获取报名列表",
-    description="获取报名记录列表，支持按部门、状态、学院、专业、时间范围等复杂筛选。",
+    description="获取报名记录列表，支持按部门、状态、学院、专业、时间范围等复杂筛选和排序。",
 )
 @paginate(LimitOffsetPagination)
 @permission_required("enrollments.audit_application")
@@ -72,10 +72,12 @@ def list_applications(
     search: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    ordering: str | None = None,
 ) -> list[dict]:
     """获取报名列表.
 
     使用 select_related 关联用户和部门，避免 N+1 查询。
+    支持排序字段：created_at, -created_at, status, name, academy, major
     """
     queryset = ApplicationForm.objects.filter(is_deleted=False).select_related(
         "config__department", "user"
@@ -112,7 +114,67 @@ def list_applications(
         except ValueError:
             raise HttpError(400, "date_to 格式错误，应为 YYYY-MM-DD") from None
 
+    if ordering:
+        valid_ordering_fields = ["created_at", "status", "name", "academy", "major"]
+        ordering_fields = []
+        for field in ordering.split(","):
+            field = field.strip()
+            if field.lstrip("-") in valid_ordering_fields:
+                ordering_fields.append(field)
+        if ordering_fields:
+            queryset = queryset.order_by(*ordering_fields)
+    else:
+        queryset = queryset.order_by("-created_at")
+
     return [_application_to_out(app) for app in queryset]
+
+
+@router.get(
+    "/{application_id}",
+    response={200: ApplicationOut, 404: ErrorResponse},
+    summary="获取报名详情",
+    description="获取单条报名记录的详细信息。",
+)
+@permission_required("enrollments.audit_application")
+def get_application_detail(
+    request: HttpRequest,
+    application_id: int,
+) -> dict:
+    """获取报名详情."""
+    try:
+        record = ApplicationForm.objects.select_related(
+            "config__department", "user"
+        ).get(id=application_id, is_deleted=False)
+    except ApplicationForm.DoesNotExist:
+        raise HttpError(404, "报名记录不存在") from None
+
+    return _application_to_out(record)
+
+
+_ALLOWED_STATUS_TRANSITIONS = {
+    1: [2, 4],
+    2: [3],
+    3: [],
+    4: [],
+    5: [1, 2, 3],
+    6: [],
+}
+
+
+def _check_status_transition(current_status: int, new_status: int) -> tuple[bool, str]:
+    """检查状态转换是否允许.
+
+    Args:
+        current_status: 当前状态
+        new_status: 目标状态
+
+    Returns:
+        (是否允许, 错误信息)
+    """
+    allowed_next_statuses = _ALLOWED_STATUS_TRANSITIONS.get(current_status, [])
+    if new_status not in allowed_next_statuses:
+        return False, f"状态不允许从「{_STATUS_DISPLAY.get(current_status, '未知')}」回退到「{_STATUS_DISPLAY.get(new_status, '未知')}」"
+    return True, ""
 
 
 @router.put(
@@ -134,10 +196,15 @@ def audit_application(
     except ApplicationForm.DoesNotExist:
         raise HttpError(404, "报名记录不存在") from None
 
-    if record.status != 1:
-        raise HttpError(400, "该报名记录已审核，无法重复审核")
+    if record.status not in [1, 5]:
+        raise HttpError(400, f"该报名记录当前状态为「{_STATUS_DISPLAY.get(record.status, '未知')}」，无法审核")
 
     target_status = _STATUS_MAP[payload.status]
+
+    is_allowed, msg = _check_status_transition(record.status, target_status)
+    if not is_allowed:
+        raise HttpError(400, msg)
+
     now = timezone.now()
 
     record.status = target_status
@@ -176,11 +243,15 @@ def batch_audit_applications(
         )
 
         if len(records) != len(payload.ids):
-            raise HttpError(400, "包含无效或已审核的报名记录")
+            raise HttpError(400, "包含无效的报名记录")
 
         for record in records:
-            if record.status != 1:
-                raise HttpError(400, "包含无效或已审核的报名记录")
+            if record.status not in [1, 5]:
+                raise HttpError(400, f"报名记录 {record.id} 当前状态为「{_STATUS_DISPLAY.get(record.status, '未知')}」，无法审核")
+
+            is_allowed, msg = _check_status_transition(record.status, target_status)
+            if not is_allowed:
+                raise HttpError(400, f"报名记录 {record.id}：{msg}")
 
             record.status = target_status
             record.audit_time = now

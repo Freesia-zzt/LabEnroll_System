@@ -485,6 +485,51 @@ class FileUploadResponseSchema(Schema):
     uploaded_at: datetime
 
 
+# ==================== 报名申请表单 Schema ====================
+
+
+class ApplicationFormCreateSchema(Schema):
+    """用户提交报名申请请求."""
+
+    config_id: int = Field(..., description="报名配置ID")
+    name: str = Field(..., min_length=1, max_length=50, description="姓名")
+    class_name: str = Field(..., min_length=1, max_length=100, description="班级")
+    academy: str = Field(..., min_length=1, max_length=100, description="学院")
+    major: str = Field(..., min_length=1, max_length=100, description="专业")
+    email: str | None = Field(None, description="邮箱")
+    director_name: str | None = Field(None, max_length=50, description="导员姓名")
+    sign_reason: str = Field(..., min_length=1, description="报名理由")
+
+
+class ApplicationFormDetailSchema(Schema):
+    """报名申请详情响应."""
+
+    model_config = {"from_attributes": True}
+    id: int
+    config_id: int
+    config_title: str
+    name: str
+    status: int
+    status_display: str
+    class_name: str
+    academy: str
+    major: str
+    email: str | None
+    director_name: str | None
+    sign_reason: str
+    audit_time: datetime | None
+    audit_remark: str | None
+    created_at: datetime
+
+
+class ApplicationFormSubmitResponseSchema(Schema):
+    """报名提交成功响应."""
+
+    code: int = 200
+    message: str = "报名提交成功"
+    data: ApplicationFormDetailSchema
+
+
 # ==================== 培训模块 Schema ====================
 
 

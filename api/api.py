@@ -1430,12 +1430,11 @@ router.add_router("/user", auth_router)
 router.add_router("/forgot-password", forgot_password_router)
 router.add_router("/questions", question_router)
 router.add_router("/", enrollment_router)
-<<<<<<< Updated upstream
+
+# 挂载用户端报名路由
+router.add_router("/applications", application_router)
 
 # 挂载管理后台路由
-=======
-router.add_router("/applications", application_router)
->>>>>>> Stashed changes
 router.add_router("/admin/departments", admin_departments_router)
 router.add_router("/admin/applications", admin_applications_router)
 router.add_router("/admin/statistics", admin_statistics_router)

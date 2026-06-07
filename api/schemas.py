@@ -5,6 +5,7 @@ from typing import Any
 from typing import Any, List, Optional
 
 from ninja import Schema
+from pydantic import Field
 
 # ==================== 基础响应 Schema ====================
 
